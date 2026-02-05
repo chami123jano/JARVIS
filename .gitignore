@@ -1,0 +1,44 @@
+# Ollama Setup and Large Files
+*.exe
+*.msi
+*.dmg
+*.pkg
+
+# Ollama Blobs (large model files)
+blobs/
+manifests/
+
+# Personal Data Files (contains user conversations, memory, tasks)
+memory.json
+chat_history.json
+scheduler.json
+settings.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Audio files (optional - uncomment if you add large audio files)
+# *.mp3
+# *.wav

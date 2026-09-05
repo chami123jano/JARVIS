@@ -1,5 +1,13 @@
 # J.A.R.V.I.S - AI Assistant
 
+## New command console
+
+Run `.\start.ps1` in PowerShell, then open **http://localhost:4190**.
+The new console includes local AI tool execution, an animated interface, SQLite memory,
+timed reminders, document tools, voice controls, and an activity journal.
+See [CONSOLE.md](CONSOLE.md) for setup, capabilities, limitations, and tests.
+The original Tkinter application described below remains available as `jarvis_gui.py`.
+
 **Just A Rather Very Intelligent System**
 
 A professional desktop AI assistant powered by Ollama with a beautiful GUI interface and uncensored conversational capabilities.

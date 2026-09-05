@@ -6,3 +6,16 @@ blobs/
 __pycache__/
 *.pyc
 *.pyo
+
+# Personal assistant state and local environment
+.venv/
+data/
+workspace/
+test-results/
+*.log
+memory.json
+chat_history.json
+scheduler.json
+settings.json
+notes.json
+calendar.json

@@ -1,0 +1,142 @@
+"""Loopback-only HTTP service for the JARVIS desktop console."""
+import argparse
+import json
+import mimetypes
+import os
+from pathlib import Path
+import secrets
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlsplit
+import webbrowser
+
+import requests
+
+from assistant_core import ROOT, Store, Tools, system_status
+from agent import Agent
+
+
+def create_server(port=4190, data_dir=None):
+    data = Path(data_dir or os.environ.get('JARVIS_DATA_DIR', ROOT / 'data'))
+    store = Store(data / 'jarvis.db')
+    if data_dir is None and 'JARVIS_DATA_DIR' not in os.environ:
+        store.import_legacy()
+    tools = Tools(store, store.config('workspace', str(ROOT / 'workspace')))
+    agent = Agent(store, tools)
+    token = secrets.token_urlsafe(32)
+    web = ROOT / 'web'
+    model_cache = {'at': 0, 'online': False, 'models': []}
+    model_lock = threading.Lock()
+
+    def models():
+        with model_lock:
+            if time.monotonic() - model_cache['at'] > 8:
+                try:
+                    response = requests.get(agent.endpoint + '/api/tags', timeout=2)
+                    response.raise_for_status()
+                    model_cache.update(online=True, models=[m['name'] for m in response.json()['models']])
+                except (requests.RequestException, ValueError, KeyError):
+                    model_cache.update(online=False, models=[])
+                model_cache['at'] = time.monotonic()
+            return {key: value for key, value in model_cache.items() if key != 'at'}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_):
+            pass
+
+        def send(self, value, status=200, content_type='application/json'):
+            body = json.dumps(value, ensure_ascii=False).encode() if content_type == 'application/json' else value
+            self.send_response(status)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+            self.send_header('Referrer-Policy', 'no-referrer')
+            self.end_headers()
+            self.wfile.write(body)
+
+        def allowed(self):
+            host = self.headers.get('Host', '')
+            return host in (f'localhost:{self.server.server_port}', f'127.0.0.1:{self.server.server_port}')
+
+        def do_GET(self):
+            if not self.allowed():
+                return self.send({'error': 'Invalid host'}, 403)
+            path = urlsplit(self.path).path
+            try:
+                if path == '/api/state':
+                    return self.send({'token': token, 'system': system_status(), 'ollama': models(),
+                                      'model': store.config('model', ''), 'workspace': str(tools.workspace),
+                                      'records': store.records(), 'history': store.history(),
+                                      'jobs': [agent.snapshot(key) for key in list(agent.jobs)]})
+                if path.startswith('/api/jobs/'):
+                    return self.send(agent.snapshot(path.rsplit('/', 1)[-1]))
+                file = (web / (path.lstrip('/') or 'index.html')).resolve()
+                if not file.is_relative_to(web) or not file.is_file():
+                    return self.send({'error': 'Not found'}, 404)
+                return self.send(file.read_bytes(), content_type=mimetypes.guess_type(file)[0] or 'application/octet-stream')
+            except KeyError:
+                self.send({'error': 'Job not found'}, 404)
+
+        def do_POST(self):
+            if not self.allowed() or self.headers.get('X-Jarvis-Token') != token:
+                return self.send({'error': 'Invalid session'}, 403)
+            if self.headers.get('Origin') not in (None, f'http://localhost:{self.server.server_port}', f'http://127.0.0.1:{self.server.server_port}'):
+                return self.send({'error': 'Invalid origin'}, 403)
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+                if not 0 < size <= 120000:
+                    raise ValueError('Request size is invalid')
+                body = json.loads(self.rfile.read(size))
+                path = urlsplit(self.path).path
+                if path == '/api/chat':
+                    prompt = str(body.get('prompt', '')).strip()
+                    if not prompt or len(prompt) > 12000:
+                        raise ValueError('Enter a request under 12,000 characters')
+                    return self.send({'id': agent.start(prompt)})
+                if path == '/api/stop':
+                    agent.stop(body['id'])
+                    return self.send({'stopped': True})
+                if path == '/api/records':
+                    if body.get('kind') == 'reminder':
+                        return self.send(tools.execute('set_reminder', {'title':body['title'], 'due':body['due']}))
+                    return self.send(store.add(body['kind'], body['title'], body.get('content', ''), body.get('due')))
+                if path == '/api/records/update':
+                    return self.send(store.update(body['id'], body['action']))
+                if path == '/api/settings':
+                    if any(job['state'] in ('running', 'stopping') for job in agent.jobs.values()):
+                        raise ValueError('Wait for the active request before changing settings')
+                    workspace = Path(body['workspace']).expanduser().resolve()
+                    if not workspace.is_dir():
+                        raise ValueError('Workspace folder does not exist')
+                    model = str(body.get('model', ''))
+                    if model and model not in models()['models']:
+                        raise ValueError('Select an installed model')
+                    tools.workspace = workspace
+                    store.set_config('workspace', str(workspace))
+                    store.set_config('model', model)
+                    return self.send({'saved': True})
+                return self.send({'error': 'Not found'}, 404)
+            except (ValueError, TypeError, KeyError, OSError) as error:
+                self.send({'error': str(error)}, 400)
+
+    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    server.daemon_threads = True
+    return server
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', type=int, default=4190)
+    parser.add_argument('--open', action='store_true')
+    args = parser.parse_args()
+    server = create_server(args.port)
+    print(f'JARVIS console: http://localhost:{server.server_port}', flush=True)
+    if args.open:
+        webbrowser.open(f'http://localhost:{server.server_port}')
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.server_close()

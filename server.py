@@ -29,6 +29,40 @@ def create_server(port=4190, data_dir=None):
     model_cache = {'at': 0, 'online': False, 'models': []}
     model_lock = threading.Lock()
 
+    # Whisper and the VAD load once and stay resident; the microphone is exclusive,
+    # so one transcription at a time.
+    voice = {'ears': None, 'vad': None, 'lock': threading.Lock()}
+
+    def voice_ready():
+        try:
+            import voice_loop  # noqa: F401
+            return True
+        except Exception:
+            return False
+
+    def transcribe(language, timeout):
+        try:
+            import voice_loop
+        except Exception as error:
+            raise ValueError(f'Voice input is unavailable: {error}')
+        if not voice['lock'].acquire(blocking=False):
+            raise ValueError('Already listening. Wait for the current recording to finish.')
+        try:
+            if voice['vad'] is None:
+                voice['vad'] = voice_loop.Vad()
+            if voice['ears'] is None:
+                voice['ears'] = voice_loop.Ears()
+            audio = voice_loop.record_utterance(voice['vad'], timeout=timeout)
+            if audio is None:
+                return {'heard': False, 'text': ''}
+            text, seconds, info = voice['ears'].transcribe(audio, language)
+            return {'heard': True, 'text': text,
+                    'language': getattr(info, 'language', language) or 'unknown',
+                    'audio_seconds': round(len(audio) / voice_loop.SAMPLE_RATE, 2),
+                    'transcribe_seconds': round(seconds, 2)}
+        finally:
+            voice['lock'].release()
+
     def models():
         with model_lock:
             if time.monotonic() - model_cache['at'] > 8:
@@ -69,6 +103,7 @@ def create_server(port=4190, data_dir=None):
                 if path == '/api/state':
                     return self.send({'token': token, 'system': system_status(), 'ollama': models(),
                                       'model': store.config('model', ''), 'workspace': str(tools.workspace),
+                                      'voice': {'available': voice_ready(), 'loaded': voice['ears'] is not None},
                                       'records': store.records(), 'history': store.history(),
                                       'jobs': [agent.snapshot(key) for key in list(agent.jobs)]})
                 if path.startswith('/api/jobs/'):
@@ -99,6 +134,10 @@ def create_server(port=4190, data_dir=None):
                 if path == '/api/stop':
                     agent.stop(body['id'])
                     return self.send({'stopped': True})
+                if path == '/api/transcribe':
+                    language = str(body.get('lang', 'si')).strip() or 'si'
+                    timeout = min(max(int(body.get('timeout', 20)), 3), 60)
+                    return self.send(transcribe(None if language == 'auto' else language, timeout))
                 if path == '/api/records':
                     if body.get('kind') == 'reminder':
                         return self.send(tools.execute('set_reminder', {'title':body['title'], 'due':body['due']}))

@@ -372,6 +372,33 @@ deep brain.
 
 **Risk:** the flag in step 3 restores today's behaviour instantly if native calls misbehave.
 
+#### ✅ Day 1 complete — commit `f3f822a`
+
+Measured on the real model, not mocked:
+
+| Check | Result |
+|---|---|
+| Unit tests | **7 of 7 pass** |
+| Multi-tool in one request | ✅ 2 tools, real results used — 10.0 s |
+| Streaming visible while running | ✅ `streaming_seen=True` |
+| Plain conversation | ✅ 3.3 s |
+| Thinking gate | ✅ trivial request **3.0 s**, down from **176 s** |
+| Sinhala in, Sinhala out | ✅ 117 Sinhala characters, 5.3 s |
+| Configured model | `my-coder:latest` → **`qwen3.5:9b`** |
+
+What actually changed: `generate()` now uses Ollama's `tools` parameter and streams the reply;
+the old envelope survives as `generate_envelope()` and takes over automatically if a model
+reports no tool support; cancellation is checked per streamed chunk, so Stop works mid-answer
+instead of after it; a new `job['partial']` field carries the live text, which `web/app.js`
+renders under the composer with a blinking cursor; the ceiling is 16 tool calls; and
+`brain()` picks the model and the thinking flag per request, sending only explicit
+"think hard" requests to `gpt-oss:20b`.
+
+One thing worth remembering: `generate()` must keep being called **positionally**
+(`self.generate(job_id, model, messages, think, deep)`). The cancellation test patches it with
+a `(job_id, *_)` stub that cannot accept keyword arguments — passing `think=` by keyword made
+that test fail.
+
 ---
 
 ### Day 2 — Sinhala ears
@@ -380,9 +407,37 @@ deep brain.
 
 **Files:** new `voice_loop.py`, `server.py`, `requirements.txt`
 
-1. Install `faster-whisper`, `sounddevice`, `numpy`, `silero-vad`.
+1. Install `faster-whisper`, `sounddevice`, `numpy`, `onnxruntime`.
+
+   **Revised down from ~3 GB to ~700 MB.** The plan first said `silero-vad`, whose pip package
+   drags in **PyTorch (~2.5 GB)** for what is a 2 MB model. It is not needed: faster-whisper
+   runs on CTranslate2, and Silero VAD is published as a plain ONNX file that `onnxruntime`
+   loads directly — and Day 4 needs `onnxruntime` anyway. `voice_loop.py` fetches
+   `silero_vad.onnx` (2 MB) into `data/voice/` on first run.
+
+   **⚠ Then the GPU gotcha, which cost a failed run.** `faster-whisper` on CUDA needs cuBLAS
+   and cuDNN, which do not ship with it:
+
+   ```
+   RuntimeError: Library cublas64_12.dll is not found or cannot be loaded
+   ```
+
+   Two things are needed, and the second is the non-obvious one:
+   - `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12` (~1 GB).
+   - Those wheels put their DLLs **inside site-packages, not on PATH**, so CTranslate2 still
+     cannot find them. `voice_loop.py` calls `register_cuda_libraries()` at import, which walks
+     `site-packages/nvidia/*/bin` and registers each folder with `os.add_dll_directory`. That
+     avoids asking you to edit PATH by hand.
+
+   **And the trap worth remembering:** `WhisperModel(...)` **constructs fine** without those
+   libraries. It only fails at the *first transcription*. So a naive try/except around loading
+   reports success and then breaks on your first spoken command. `Ears.__init__` therefore runs
+   a one-second `warmup()` inference, which forces any GPU problem to surface at startup where
+   falling back to the CPU is still possible.
 2. Capture microphone audio at 16 kHz with `sounddevice`.
-3. **silero-VAD** decides when you stopped talking — no button, no fixed timeout.
+3. **silero-VAD** decides when you stopped talking — no button, no fixed timeout. Hysteresis
+   (0.55 to start, 0.35 to stop, 0.8 s of quiet to end) so a pause mid-sentence does not cut
+   you off, with a 0.3 s floor to ignore a cough and a 30 s ceiling.
 4. Transcribe with `faster-whisper`, model **`large-v3-turbo`**, `compute_type="int8"`,
    `language="si"`, **`device="cuda"`** — the measured 2.2 GB of spare VRAM makes the GPU the
    right home for it. Time it; under ~1 second is expected there. If VRAM ever gets tight,

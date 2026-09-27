@@ -101,20 +101,40 @@ The right move is **several specialised models, each in its correct place**:
 | **Fast brain** — every voice command | `qwen3.5:9b` | 6.6 GB | GPU, always loaded | Newest Qwen. **201 languages including Sinhala.** **Natively multimodal — it sees images.** 262K context. Thinking mode. Native tool calling. The largest thing that honestly fits in 8 GB. |
 | **Deep brain** — hard reasoning, on demand | `gpt-oss:20b` | 14 GB | GPU + RAM split | Mixture-of-Experts, so only ~3.6B parameters compute per word — far faster than its size suggests. **Adjustable reasoning effort** (low/medium/high) and full chain-of-thought. 128K context. |
 | **Vision** | *none needed* | 0 | — | `qwen3.5:9b` already sees. This saves ~5 GB and a whole day of work. |
-| **Ears** | `faster-whisper large-v3-turbo` int8 | 1.5 GB | CPU | **Beats `medium` on both accuracy and speed**, 4x faster than `large-v3`. This is a strict upgrade over the obvious choice. |
+| **Ears** | `faster-whisper large-v3-turbo` int8 | 1.5 GB | **GPU** — the measured headroom allows it | **Beats `medium` on both accuracy and speed**, 4x faster than `large-v3`. A strict upgrade over the obvious choice. |
 | **Memory** | `nomic-embed-text` | 274 MB | CPU | Turns notes into searchable meaning. Negligible cost. |
 | **Code** | `qwen2.5-coder:7b` | 4.4 GB | on demand | You already have it. Keep it for code work — it is good at that, just not at being JARVIS. |
 | **Wake word** | openWakeWord `hey_jarvis` | 50 MB | CPU | Pretrained. No training, no dataset. |
 | **Voice ID** | SpeechBrain ECAPA-TDNN | 80 MB | CPU | Knows *who* is speaking. Day 17. |
 
-**VRAM budget with tuning applied:**
+**VRAM budget — measured, not estimated.** I downloaded `qwen3.5:9b` and ran it:
 
 ```
-qwen3.5:9b weights                6.6 GB
-KV cache, 32K context, q8_0       0.7 GB   (q8_0 halves it — see below)
-                                  -------
-                                  7.3 GB of 8.0    ✅ fits, with the ears on the CPU
+MEASURED 2026-09-28, qwen3.5:9b loaded and generating:
+
+  VRAM in use        5974 MiB of 8188      (73% — 2.2 GB spare)
+  Speed              40.6 tokens/second
+  Cold load          56 s from disk        (once; then KEEP_ALIVE holds it)
+  Sinhala output     නමස්කාරය, සීපියු එක 40% ක් තිබේ.   ✅ correct, natural
 ```
+
+**This is better than I expected and it changes one decision.** I budgeted 7.3 GB; the real
+figure is 5.97 GB, because flash attention and the `q8_0` cache are doing more than predicted.
+That leaves **2.2 GB spare — enough to put Whisper on the GPU after all**, which Day 2 now
+does instead of using the CPU. Expect roughly a second shaved off every spoken command.
+
+**40 tokens per second is comfortably fast enough for speech**, since it generates quicker
+than the voice can read it out.
+
+**But one real problem surfaced, and it matters.** That trivial two-sentence request produced
+**3756 tokens** and took 176 seconds. The cause is that **thinking mode is on by default** — it
+reasoned at length about saying hello. For a voice assistant that is unusable: nobody waits
+three minutes to be greeted. So:
+
+- **Thinking mode must be off for ordinary commands** and switched on deliberately for hard
+  questions only. Day 1, step 7 — treat this as required, not optional.
+- It is a second, independent reason the Day 5 alias table matters: your forty daily commands
+  should never reach the model at all.
 
 **Two environment variables worth real VRAM** — set these on Day 1:
 
@@ -280,18 +300,38 @@ So the very first step is not code. **Upgrade Ollama.**
    a separate folder that the installer does not touch. Then confirm with `ollama --version`.
    *(There is a stale `OllamaSetup.exe` sitting in the project folder — ignore it, it is old.
    Day 28 deletes it.)*
-2. **`git init` in `D:\me\JARVIS`.** Then `git add -A` and
-   `git commit -m "JARVIS before the rebuild"`. It is not a repository right now, which means
-   there is **no undo button** for any of the next 30 days. The most important two minutes
-   in the plan.
-3. Copy `data\jarvis.db` to `data\jarvis.db.backup-2026-09-28`. It holds your real notes.
-4. Set the four Ollama environment variables from section 4, then restart Ollama. Use
-   `OLLAMA_MODELS=D:\ollama` — about 26 GB of models are coming and C: has only 95 GB free.
-   Do this *after* the upgrade so the new version picks them up.
-5. Start the downloads, they are the long pole: `qwen3.5:9b`, then `gpt-oss:20b`.
+2. **Commit a baseline.** ✅ *Done.* This folder is already a git repository with real history
+   (`5aeb86b` and earlier), and the working tree was clean, so the pre-rebuild state was
+   already safe. Commit `59c0dfa` adds this plan on top. Every day below should end with its
+   own commit, so any single day can be reverted on its own.
+3. Copy `data\jarvis.db` to `data\jarvis.db.backup-2026-09-28`. ✅ *Done* — it holds your
+   real notes, and `data/` is gitignored so git alone would not have protected it.
+4. Set the four Ollama environment variables from section 4. ✅ *Done*, at User scope.
+   `OLLAMA_MODELS=D:\ollama`, and your existing 8.72 GB of models were moved there so nothing
+   had to be re-downloaded — which also took C: from 95 GB free to **103 GB**.
 
-**Done when:** `ollama --version` reports 0.34.x, `ollama pull qwen3.5:9b` actually starts,
-`git log` shows one commit, and the backup file exists.
+   **⚠ The gotcha that cost us twenty minutes, so it does not cost you an hour later.**
+   Setting these variables does **not** affect the already-running Ollama. The tray app
+   (`ollama app.exe`) starts at login and inherits its environment from Explorer *at that
+   moment*, so a variable set afterwards is invisible to it. The symptom is nasty because it
+   looks like data loss rather than a configuration problem: `ollama list` comes back **empty**
+   and Ollama quietly recreates an empty store at `C:\Users\ambaw\.ollama\models`. Your models
+   are perfectly fine on D: the whole time.
+
+   Two ways to make it real, and you need one of them:
+   - **Restart Windows** (or log out and back in). Explorer then reads the variables at login
+     and the tray app inherits all four. This is the clean fix and the one to use.
+   - Or launch the server yourself: `$env:OLLAMA_MODELS='D:\ollama'; ollama serve`. This is
+     what is running right now, which is why `ollama list` shows both models again.
+
+   **Verify after your next restart** with `ollama list`. If it is empty, the variables did not
+   take and the tray app is using the default path — do not panic and do not re-download
+   anything, just check the environment.
+5. Start the downloads, they are the long pole: `qwen3.5:9b` *(running now)*, then
+   `gpt-oss:20b`.
+
+**Done when:** `ollama --version` reports 0.34.x and `ollama pull qwen3.5:9b` actually starts.
+The baseline commit and the database backup are already in place.
 
 ---
 
@@ -304,10 +344,10 @@ thinks before answering on hard questions, and starts replying while still worki
 
 **Files:** `agent.py` (rewrite `generate()`), `requirements.txt`, `settings.json`
 
-1. Confirm `qwen3.5:9b` arrived: `ollama list`.
-2. **Measure before trusting.** Run `ollama run qwen3.5:9b "say hello in Sinhala"` and watch
-   `nvidia-smi` in a second window. Under ~7.6 GB used means keep it. Pinned at the limit
-   means fall back to `qwen3.5:4b` (3.4 GB) — write down whichever you chose.
+1. Confirm `qwen3.5:9b` arrived: `ollama list`. ✅ *Done* — 6.6 GB, verified, no partial files.
+2. **Measure before trusting.** ✅ *Done* — 5974 MiB of 8188 VRAM, 40.6 tokens/second, correct
+   Sinhala on the first try. `qwen3.5:9b` is confirmed as the fast brain; no need to fall back
+   to `qwen3.5:4b`. Full numbers in section 4.
 3. **Replace the JSON-envelope hack with real tool calling** — send `tools=schemas()` to
    Ollama and read `message.tool_calls` back. This deletes about 40 lines and enables
    multi-tool turns. Keep the old envelope behind a flag as an automatic fallback, because
@@ -318,8 +358,11 @@ thinks before answering on hard questions, and starts replying while still worki
 6. **Add the deep tier.** `pull gpt-oss:20b`. A `think_hard` tool, and automatic escalation
    when a question is long or analytical. Runs as a background job so JARVIS stays responsive,
    and tells you "let me think properly about that" before switching.
-7. **Turn on thinking mode** for the fast brain on non-trivial questions, and show the
-   reasoning in the HUD but never speak it aloud.
+7. **Gate thinking mode — this is required, not a nicety.** Measured: with thinking on by
+   default, "say hello in Sinhala" produced **3756 tokens and took 176 seconds**. Nobody waits
+   three minutes to be greeted. So default it **off**, turn it on only for genuinely hard
+   questions, and show the reasoning in the HUD without ever speaking it aloud. Verify by
+   timing a trivial command afterwards — it should answer in about a second.
 8. Rewrite the system prompt as a real persona: calm, brief, lightly witty, uses your name,
    never claims an action it did not perform.
 
@@ -341,8 +384,10 @@ deep brain.
 2. Capture microphone audio at 16 kHz with `sounddevice`.
 3. **silero-VAD** decides when you stopped talking — no button, no fixed timeout.
 4. Transcribe with `faster-whisper`, model **`large-v3-turbo`**, `compute_type="int8"`,
-   `language="si"`, on the CPU. You have 14 idle cores and a command is a few seconds of
-   audio. Time it; anything under ~2 seconds is good.
+   `language="si"`, **`device="cuda"`** — the measured 2.2 GB of spare VRAM makes the GPU the
+   right home for it. Time it; under ~1 second is expected there. If VRAM ever gets tight,
+   switch to `device="cpu"`: you have 14 idle cores, a command is only a few seconds of audio,
+   and it costs about a second.
 5. Add `POST /api/transcribe` so the HUD can show the transcript.
 6. **Say 20 real commands in Sinhala and write down every transcript, right or wrong.** That
    list becomes Day 5's alias table. Do not skip the writing-down part — it is the single
@@ -490,14 +535,71 @@ Using **WhatsApp Desktop**, already installed and logged in. No Playwright, no Q
    opens the chat pre-filled and **stops**, leaving you to press Enter. Nothing sends without
    a human keystroke. Keep it on for the first week.
 7. Telegram as fallback when WhatsApp is closed. Log every send to the journal.
-8. Reading **incoming** messages is deliberately out of scope — much bigger and more fragile.
-   Day 30 if you want it.
 
 **Done when:** a Sinhala voice command sends a real WhatsApp message after you confirm, the
 Sinhala arrives readable, and it is in the journal.
 
 **Risk:** a WhatsApp update renames UI elements. Keep those names in one dictionary at the
 top of `messaging.py` so a fix is one line. The deep link itself is stable.
+
+---
+
+### Day 7b — Reading incoming messages
+
+**Goal:** *"Chamindu, amma ta message ekak awa — mama gedara enawa kiyala."*
+
+**Files:** new `notifications.py`, `speech.py`, `permissions.py`
+
+I originally left this out as too fragile. Having looked properly, **there is a much better
+way than scraping the WhatsApp window**, so it belongs here in Phase C rather than at Day 30.
+
+1. **Use the Windows notification listener, not the WhatsApp UI.** Windows has an official
+   API — `UserNotificationListener` in `Windows.UI.Notifications.Management` — that hands any
+   program the notifications other apps post, with the sender and the text already separated.
+   Reach it from Python with `winrt`/`winsdk`.
+
+   Why this is the right choice:
+
+   | | Notification listener (chosen) | Reading the WhatsApp window |
+   |---|---|---|
+   | Survives a WhatsApp update | Yes — it never touches WhatsApp | No, breaks on redesign |
+   | Works for other apps too | **Yes** — Telegram, email, everything, free | No, one app only |
+   | Needs WhatsApp visible or focused | No | Yes, it must be open and scraped |
+   | Arrives instantly | Yes, event-driven | No, requires polling |
+
+   One API therefore gives you Day 7b **and** Day 8's phone notification mirroring. Two days
+   of work collapse into one mechanism.
+2. Windows asks your permission for notification access the first time. Grant it once, in
+   Settings → Privacy → Notifications.
+3. Match the sender against your contacts table so it says **"amma"**, not a phone number.
+4. Speak it in Sinhala: *"Amma ta message ekak awa"* then the message. Long messages get a
+   summary and "should I read the whole thing?"
+5. **Reply straight back by voice**, reusing Day 7's send path and confirmation gate. This is
+   the part that makes it feel like a real assistant rather than a notifier.
+6. A `read_messages` tool for "mokakda aawe" — everything unread since you last asked.
+7. **Fall back to the phone** via KDE Connect (Day 8) when the laptop is closed, so nothing is
+   missed.
+
+**The privacy design matters more here than anywhere else in the plan**, because this API sees
+*everything*, including things you never want spoken:
+
+- **An app allowlist, empty by default.** You add WhatsApp. Nothing else is listened to until
+  you say so.
+- **Never speak a one-time code.** Detect OTPs, banking codes and verification numbers and
+  show them on screen only, never aloud. This alone justifies the allowlist.
+- **A per-contact quiet list**, so a noisy group chat cannot interrupt you.
+- **Message bodies are not written to disk by default** — held in memory, spoken, discarded.
+  A setting turns on history if you want it.
+- **Do not read messages aloud when someone else is present** — wired to Day 16's presence
+  detection once that exists. Your messages should not be announced to a room.
+- Quiet hours from Day 19 apply here too.
+
+**Done when:** a WhatsApp message arrives and JARVIS tells you in Sinhala who it is from and
+what it says, and you can answer by voice without touching the laptop.
+
+**Risk:** the notification only carries what the toast shows, so a very long message is
+truncated. That is when it falls back to opening the chat and reading it properly — the one
+place UI Automation is still needed, and now only as a rare second resort.
 
 ---
 
@@ -510,8 +612,10 @@ top of `messaging.py` so a fix is one line. The deep link itself is stable.
 1. Install KDE Connect on Windows and Android, pair over wifi. Free, open source, no cloud,
    and it already exposes SMS, calls and notifications.
 2. Wrap its command line: `send_sms(contact, text)`, `call(contact)`.
-3. **Notification mirroring** — phone notifications become spoken alerts, filtered so only
-   what matters interrupts you.
+3. **Notification mirroring** — phone notifications become spoken alerts. This reuses Day 7b's
+   pipeline wholesale: the same allowlist, the same OTP suppression, the same quiet list, the
+   same spoken Sinhala. Only the source changes, from Windows to the phone. Its value is
+   covering the case where the laptop is shut.
 4. "JARVIS, where is my phone" → ring it at full volume. Small, genuinely useful.
 5. Fallback if KDE Connect is awkward: ADB over wifi with developer mode.
 6. Tier 2 confirmation on calls and SMS. A call is harder to take back than a message.
@@ -961,7 +1065,8 @@ I would rather you know now than on Day 25.
 
 **It will:** understand spoken Sinhala for your everyday commands; answer out loud in a
 Sinhala male voice; wake to its name from across the room; send WhatsApp and SMS and place
-calls after you confirm; read and draft your email; **see your screen and explain it**; know
+calls after you confirm; **tell you who messaged you and what they said, and let you reply by
+voice**; read and draft your email; **see your screen and explain it**; know
 when you are at your desk; know your voice from anyone else's; answer real questions from the
 live web with sources; answer questions about your own files and your own business; remember
 you for years; speak up on its own when it should; write its own new tools with your approval;
@@ -985,7 +1090,7 @@ Sinhala sentence and something you cannot undo.
 | Priority | Days | What you get |
 |---|---|---|
 | **Essential** | 0–6 | Sinhala voice in and out, hands-free, a real two-tier brain. **One week.** |
-| **High** | 7, 10, 12, 14, 27 | Messaging, PC control, live web, real memory, always running |
+| **High** | 7, 7b, 10, 12, 14, 27 | Messaging both ways, PC control, live web, real memory, always running |
 | **Strong** | 15, 17, 19, 24 | Screen vision, voice ID, proactive briefings, the HUD |
 | **Good** | 8, 9, 11, 13, 20, 22, 23, 26 | Phone, email, browser, your files, autonomy, business, media |
 | **Advanced** | 16, 18, 21, 25 | Presence, see-and-click, self-extension, phone access |
@@ -1022,7 +1127,7 @@ and Day 29 removes even the voice dependency.
 
 1. **Upgrade Ollama, 0.12.10 → 0.34.4.** Nothing else can happen first — the new models are
    refused outright by your version. Your existing models are kept.
-2. **`git init` in `D:\me\JARVIS`.** There is no undo button until you do.
+2. ✅ Baseline committed, database backed up. The folder was already a git repository.
 3. Set the four Ollama environment variables from section 4, after the upgrade.
 4. Then the downloads: `qwen3.5:9b` (6.6 GB) and `gpt-oss:20b` (14 GB), on good internet.
 5. **Think about the RAM.** 32 GB (roughly Rs. 30,000–45,000) is the difference between a

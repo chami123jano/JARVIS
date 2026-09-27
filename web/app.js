@@ -95,12 +95,21 @@ async function submit(prompt) {
     const result = await api('chat', {prompt});
     activeJob = result.id; message('user', prompt); $('#prompt').value = ''; setMode('thinking');
     $('#working').hidden = false; $('#stopButton').hidden = false; $('#inputStatus').textContent = 'REQUEST IN PROGRESS';
+    streamText('');
     pollJob();
   } catch (error) { toast(error.message); $('#sendButton').disabled = false; }
 }
 $('#chatForm').onsubmit = event => { event.preventDefault(); submit($('#prompt').value); };
 $('#prompt').onkeydown = event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit($('#prompt').value); } };
 $('#stopButton').onclick = async () => { window.speechSynthesis?.cancel(); recognition?.stop(); if (activeJob) { try { await api('stop', {id:activeJob}); } catch (error) { toast(error.message); } } };
+// Shows the model's words as they stream in, so a long answer is never a blank wait.
+function streamText(text) {
+  const node = $('#streaming');
+  if (!text) { node.hidden = true; node.textContent = ''; return; }
+  const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 40;
+  node.hidden = false; node.textContent = text;
+  if (atBottom) node.scrollTop = node.scrollHeight;
+}
 async function pollJob() {
   if (!activeJob) return;
   try {
@@ -109,14 +118,16 @@ async function pollJob() {
     $('#stepCount').textContent = String(job.events.filter(e => e.label === 'Tool completed').length).padStart(2, '0') + ' OPERATIONS';
     if (state) { state.jobs = state.jobs.filter(j => j.id !== job.id); state.jobs.push(job); }
     renderActivity();
+    streamText(job.partial);
     if (['done','error','cancelled'].includes(job.state)) {
       activeJob = null; $('#working').hidden = true; $('#stopButton').hidden = true; $('#sendButton').disabled = false;
+      streamText('');
       $('#inputStatus').textContent = 'READY WHEN YOU ARE'; message('assistant', job.answer, job.state === 'error');
       setMode(job.state === 'error' ? 'error' : 'standby'); if (job.state === 'done') speak(job.answer);
       refresh(); return;
     }
   } catch (error) { $('#workingLabel').textContent = 'Connection interrupted. Retrying...'; }
-  setTimeout(pollJob, 500);
+  setTimeout(pollJob, 250);
 }
 document.querySelectorAll('[data-prompt]').forEach(button => button.onclick = () => {
   view('console'); const prompt = button.dataset.prompt;

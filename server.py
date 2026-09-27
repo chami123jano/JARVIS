@@ -135,7 +135,9 @@ def create_server(port=4190, data_dir=None):
                     agent.stop(body['id'])
                     return self.send({'stopped': True})
                 if path == '/api/transcribe':
-                    language = str(body.get('lang', 'si')).strip() or 'si'
+                    # 'auto' by default: measured 19/20 commands recognised against 8/20
+                    # when Sinhala is forced. See voice_loop.DEFAULT_LANGUAGE.
+                    language = str(body.get('lang', 'auto')).strip() or 'auto'
                     timeout = min(max(int(body.get('timeout', 20)), 3), 60)
                     return self.send(transcribe(None if language == 'auto' else language, timeout))
                 if path == '/api/records':

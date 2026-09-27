@@ -80,10 +80,24 @@ HALLUCINATIONS = {
 }
 HALLUCINATION_MAX_SECONDS = 2.0
 
-# Base Whisper has seen little Sinhala, so it often hears the words correctly but
-# spells them in Latin, Devanagari, Gujarati or Malayalam instead of Sinhala. Feeding
-# it a Sinhala sentence first biases the decoder toward Sinhala script.
+# Kept only so tests/whisper_bench.py can re-measure it. Do not use it: priming Whisper
+# with Sinhala scored WORST of every configuration tried (0 of 20 commands recognised,
+# against 19 of 20 without it). It pushes the weak Sinhala decoder into repetition loops.
 SINHALA_PROMPT = 'දැන් වෙලාව කීයද? අද කාලගුණය කොහොමද? අම්මාට මැසේජ් එකක් යවන්න. මිනිත්තු දහයකින් මතක් කරන්න.'
+
+# Measured over 20 real Sinhala commands, scoring which command was recognised rather
+# than whether the words were spelled right:
+#
+#   language=None (auto)  19/20 correct, 0 wrong    <- chosen
+#   language='si'          8/20 correct, 1 wrong
+#   language='si' + prompt  0/20 correct, 3 wrong
+#   vad_filter=True        2/20 correct, 3 wrong
+#
+# Forcing Sinhala is counter-productive. Left to choose, Whisper writes Sinhala speech in
+# Tamil or Latin script with the sounds intact, and sinhala.py matches on sound. Letting
+# it pick the script it is confident in beats forcing the one we want.
+DEFAULT_LANGUAGE = None
+TEMPERATURE_FALLBACK = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
 
 
 def ensure_vad():
@@ -174,15 +188,16 @@ class Ears:
             pass
         return 'cpu', 'int8'
 
-    def transcribe(self, audio, language='si', prompt=None):
-        """Return (text, seconds, info). language=None lets Whisper decide."""
+    def transcribe(self, audio, language=DEFAULT_LANGUAGE, prompt=None):
+        """Return (text, seconds, info). language=None lets Whisper choose the script."""
         started = time.monotonic()
-        if prompt is None and language == 'si':
-            prompt = SINHALA_PROMPT
         segments, info = self.model.transcribe(
             audio, language=language, beam_size=5, vad_filter=False,
             initial_prompt=prompt,
             condition_on_previous_text=False,
+            # The temperature ladder is Whisper's own defence against repetition loops;
+            # pinning a single temperature disables it and produces "වවවවවව" output.
+            temperature=TEMPERATURE_FALLBACK, compression_ratio_threshold=2.4,
             # Sinhala commands are short; this keeps it from inventing filler.
             no_speech_threshold=.5, log_prob_threshold=-1.0)
         text = ' '.join(segment.text.strip() for segment in segments).strip()
@@ -440,7 +455,8 @@ def main():
                         help='live microphone and speech-detection meter')
     parser.add_argument('--speech-threshold', type=float, default=None,
                         help=f'VAD probability to count as speech (default {SPEECH_ON})')
-    parser.add_argument('--lang', default='si', help="language code, or 'auto' to detect")
+    parser.add_argument('--lang', default='auto',
+                        help="'auto' (default, measured best for Sinhala) or a language code")
     parser.add_argument('--device', type=int, default=None, help='input device number')
     parser.add_argument('--whisper-device', default='auto', choices=['auto', 'cuda', 'cpu'])
     parser.add_argument('--model', default=WHISPER_MODEL)

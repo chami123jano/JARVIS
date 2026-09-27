@@ -477,6 +477,63 @@ that test fail.
 
 **Done when:** `python voice_loop.py --once` gives usable Sinhala for at least 15 of 20.
 
+#### ✅ Day 2 complete — commits `81e8b88`, `98c68fb`, `bec5c92`, `576a861`
+
+**Result: 19 of 20 spoken Sinhala commands recognised correctly. Zero wrong actions.**
+
+It did not start there. The first session produced what looked like failure, and the
+route from 11/20 to 19/20 was entirely measurement. Worth reading before Day 5, because
+the conclusion reshapes it.
+
+**What the transcripts actually showed.** Whisper heard every one of the twenty commands
+correctly. It simply wrote eight of them in **Tamil script**, and others in Latin,
+Devanagari, Gujarati or accented Icelandic. Tamil is Sri Lanka's other language and
+Whisper has far more of it than Sinhala, so that is where it reaches when unsure. The ears
+are good; the spelling is not.
+
+**So match on sound, not script.** `sinhala.py` reduces any script to one rough Latin
+phonetic form. `අම්මාට`, `ammata` and `அம்மாட்டு` all become the same thing.
+
+**Two of my own assumptions were wrong, and the numbers said so:**
+
+| Configuration | Commands correct |
+|---|---|
+| **`language=None` — let Whisper choose** | **19/20, 0 wrong** |
+| `language='si'` — force Sinhala | 7/20 |
+| `language='si'` + a Sinhala prompt | **0/20** |
+| `vad_filter=True` | 0/20 |
+| `large-v3` instead of turbo | worse, and 16x slower |
+
+Forcing Sinhala is counter-productive, priming with a Sinhala prompt was the **worst**
+option tried, and the larger model is both less accurate here and vastly slower. Also
+restored Whisper's temperature ladder: pinning `temperature=0.0` disables its own defence
+against the repetition loops that produced `වවවවවව` output.
+
+**Three real bugs, found only because the audio was saved, each now covered by a test:**
+
+1. **Tamil was unmapped**, so eight transcripts normalised to `''` and scored 0.00. Every
+   Indic script now runs through one consonant/sign/virama model.
+2. **Accented Latin letters were dropped rather than stripped.** `Baríganegu lókkarann`
+   became `barganegu lkaran`, which matched *calculate* more closely than *lock the
+   computer*. Icelandic þ and ð needed explicit mapping — they are letters, not accents.
+3. **Short noise could fire a real command.** `hana` scored 0.47 and `Thank you.` 0.48,
+   both above the acceptance floor. Similarity is now length-aware, and anything under
+   five characters is refused outright.
+
+**The safety property to preserve:** across all twenty, there were no wrong actions. The
+one failure is heard as English, still ranks the right command first, but scores below the
+floor — so JARVIS asks again instead of guessing. *Unsure is safe, wrong is not.* Keep
+that floor when Day 5 extends the vocabulary.
+
+**What this means for Day 5.** `sinhala.py` plus `tests/command_match.py` are the alias
+table, arriving early and stronger than designed: they work for any script Whisper emits,
+so the table needs phrasings rather than spellings. Day 5 becomes "extend the vocabulary
+to 40 commands and wire it into the router", not "build matching from scratch".
+
+**Two tools worth keeping:** `tests/whisper_bench.py` replays the saved clips against any
+Whisper setting, and `tests/command_match.py` scores which command won. Never tune speech
+recognition by ear again — 20 real recordings live in `data/voice/clips/`.
+
 **Risk — the real one.** Accuracy may disappoint. Three escalating fixes in order: run
 `large-v3` instead of turbo (slower, slightly better); switch to a Sinhala fine-tuned Whisper
 from Hugging Face converted to CTranslate2 format; or speak in Singlish, which Day 5 handles

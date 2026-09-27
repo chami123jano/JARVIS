@@ -147,12 +147,22 @@ def main():
     best = max(results)
     print(f'\nBEST: {best[3]}  (avg {best[0]:.3f}, {best[1]} of {len(EXPECTED)} usable)')
 
+    # Merge rather than overwrite: a --only run must not discard the other configs'
+    # results, which is what made a background large-v3 run wipe the turbo numbers.
     out = voice_loop.ROOT / 'data' / 'voice' / 'bench.json'
-    out.write_text(json.dumps([{'config': r[3], 'average': round(r[0], 4), 'good': r[1],
-                                'partial': r[2], 'seconds': round(r[4], 1),
-                                'rows': [{'n': n, 'score': round(s, 3), 'text': t} for n, s, t in r[5]]}
-                               for r in results], ensure_ascii=False, indent=2), encoding='utf-8')
-    print(f'Full results: {out}')
+    existing = {}
+    if out.exists():
+        try:
+            existing = {entry['config']: entry for entry in json.loads(out.read_text(encoding='utf-8'))}
+        except (ValueError, KeyError, TypeError):
+            existing = {}
+    for average, good, partial, name, seconds, rows in results:
+        existing[name] = {'config': name, 'average': round(average, 4), 'good': good,
+                          'partial': partial, 'seconds': round(seconds, 1),
+                          'rows': [{'n': n, 'score': round(s, 3), 'text': t} for n, s, t in rows]}
+    out.write_text(json.dumps(sorted(existing.values(), key=lambda e: -e['average']),
+                              ensure_ascii=False, indent=2), encoding='utf-8')
+    print(f'Full results ({len(existing)} configs on file): {out}')
 
 
 if __name__ == '__main__':

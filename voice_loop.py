@@ -80,6 +80,11 @@ HALLUCINATIONS = {
 }
 HALLUCINATION_MAX_SECONDS = 2.0
 
+# Base Whisper has seen little Sinhala, so it often hears the words correctly but
+# spells them in Latin, Devanagari, Gujarati or Malayalam instead of Sinhala. Feeding
+# it a Sinhala sentence first biases the decoder toward Sinhala script.
+SINHALA_PROMPT = 'දැන් වෙලාව කීයද? අද කාලගුණය කොහොමද? අම්මාට මැසේජ් එකක් යවන්න. මිනිත්තු දහයකින් මතක් කරන්න.'
+
 
 def ensure_vad():
     """Fetch the 2 MB VAD model once."""
@@ -169,11 +174,14 @@ class Ears:
             pass
         return 'cpu', 'int8'
 
-    def transcribe(self, audio, language='si'):
+    def transcribe(self, audio, language='si', prompt=None):
         """Return (text, seconds, info). language=None lets Whisper decide."""
         started = time.monotonic()
+        if prompt is None and language == 'si':
+            prompt = SINHALA_PROMPT
         segments, info = self.model.transcribe(
             audio, language=language, beam_size=5, vad_filter=False,
+            initial_prompt=prompt,
             condition_on_previous_text=False,
             # Sinhala commands are short; this keeps it from inventing filler.
             no_speech_threshold=.5, log_prob_threshold=-1.0)
@@ -233,6 +241,32 @@ def record_utterance(vad, device=None, timeout=20):
     if speech < MIN_SPEECH:
         return None
     return numpy.concatenate(collected)
+
+
+def save_wav(path, audio):
+    """Write 16-bit PCM so recordings can be re-tested against other models later.
+
+    Keeping the audio is the difference between trying a new model in a minute and
+    asking the user to record everything again.
+    """
+    import wave
+    import numpy
+    path.parent.mkdir(parents=True, exist_ok=True)
+    samples = (numpy.clip(audio, -1, 1) * 32767).astype('<i2')
+    with wave.open(str(path), 'wb') as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(SAMPLE_RATE)
+        output.writeframes(samples.tobytes())
+    return path
+
+
+def load_wav(path):
+    import wave
+    import numpy
+    with wave.open(str(path), 'rb') as source:
+        frames = source.readframes(source.getnframes())
+    return numpy.frombuffer(frames, dtype='<i2').astype('float32') / 32768.0
 
 
 def record_push(device=None, max_seconds=60):
@@ -368,6 +402,7 @@ def session(ears, vad, device, language, count, out_path, push=False):
                 print('     nothing heard - repeating this one\n')
                 continue
             seconds = len(audio) / SAMPLE_RATE
+            wav = save_wav(out_path.parent / 'clips' / f'{index:03d}.wav', audio)
             text, elapsed, info = ears.transcribe(audio, language)
             detected = getattr(info, 'language', language) or 'unknown'
             probability = round(float(getattr(info, 'language_probability', 0) or 0), 2)
@@ -376,7 +411,8 @@ def session(ears, vad, device, language, count, out_path, push=False):
             entries.append({'number': index, 'transcript': text, 'language': detected,
                             'language_probability': probability,
                             'audio_seconds': round(seconds, 2),
-                            'transcribe_seconds': round(elapsed, 2)})
+                            'transcribe_seconds': round(elapsed, 2),
+                            'clip': str(wav.relative_to(ROOT)).replace('\\', '/')})
             out_path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding='utf-8')
     except KeyboardInterrupt:
         print('\nStopped early.')

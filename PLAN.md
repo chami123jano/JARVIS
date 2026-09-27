@@ -85,6 +85,33 @@ What that money buys:
 written to work on your current 15.6 GB — nothing below is blocked on the upgrade. But
 Phase F (deep reasoning) and Day 22 are where you will feel the ceiling.
 
+**Measured 2026-09-28, and it is exactly as tight as predicted.** `gpt-oss:20b` downloaded
+and I ran it:
+
+```
+FIRST ATTEMPT   failed — needed a 7.8 GB pinned host buffer, 3 GB free
+WITH num_gpu=24 failed — requirement fell to 1.64 GB, still could not allocate
+LATER ATTEMPT   worked — 80.4 s, correct answer, real chain-of-thought
+
+  Loaded as:  14 GB, 57% CPU / 43% GPU, 8192 context
+  GPU:        6766 MiB of 8188
+  Free RAM:   1.1 GB      <-- the whole machine, right at the edge
+```
+
+So the deep brain **does run, but only just**. Three honest conclusions:
+
+1. **It works when the machine is otherwise quiet.** Whether it loads depends on what else is
+   open at that moment, which is why it failed twice and then succeeded.
+2. **It leaves 1.1 GB of RAM free**, so everything else on the laptop will crawl while it
+   thinks. Fine for an occasional hard question, not for routine use.
+3. **It is slow at 57% on the CPU** — 80 seconds for a one-line percentage problem. That is
+   the 5-to-11x penalty for spilling out of VRAM, exactly as described above.
+
+**32 GB of RAM fixes all three at once**, and it is the only hardware in this machine that is
+actually holding JARVIS back. Until then, `agent.py` falls back automatically: if the deep
+model cannot be loaded, the request is answered by `qwen3.5:9b` with extended thinking and
+the activity log says why, rather than failing at you.
+
 **The GPU is fine and does not need changing.** 8 GB comfortably holds the fast brain.
 
 ### 4. The model roster — the "powerful Ollama" answer

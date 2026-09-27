@@ -226,6 +226,15 @@ class Agent:
                 # Model has no thinking mode; ask again without the switch.
                 payload.pop('think', None)
                 return self.stream(job_id, payload, deadline=600 if deep else 180)
+            if deep and any(word in text for word in ('allocate', 'out of memory', 'terminated', 'cuda_host')):
+                # The deep model is installed but will not fit in memory right now. The fast
+                # brain with extended thinking is a real substitute, so say so and carry on
+                # rather than failing the request.
+                fast = self.store.config('model', '')
+                if fast and fast != model:
+                    self.event(job_id, 'Deep model will not fit',
+                               'Not enough free memory to load it. Using the fast brain with extended thinking instead.')
+                    return self.generate(job_id, fast, messages, True, False)
             if 'tool' in text and ('support' in text or 'not' in text):
                 self.native_tools = False
                 self.event(job_id, 'Falling back', f'{model} does not support tools; using the structured envelope instead.')

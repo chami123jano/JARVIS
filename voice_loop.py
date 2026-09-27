@@ -235,7 +235,105 @@ def record_utterance(vad, device=None, timeout=20):
     return numpy.concatenate(collected)
 
 
-def session(ears, vad, device, language, count, out_path):
+def record_push(device=None, max_seconds=60):
+    """Record from Enter to Enter, with no speech detection involved.
+
+    Used for the transcript session and as the fallback whenever VAD tuning is not
+    cooperating: capture is the part that must never be in doubt.
+    """
+    import numpy
+    import sounddevice
+
+    blocks = queue.Queue()
+
+    def callback(indata, _frames, _time, status):
+        if status:
+            print(f'  audio status: {status}', file=sys.stderr)
+        blocks.put(indata[:, 0].copy())
+
+    collected = []
+    with sounddevice.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='float32',
+                                 blocksize=FRAME, device=device, callback=callback):
+        input('     RECORDING - speak now, then press Enter to stop... ')
+        while True:
+            try:
+                collected.append(blocks.get_nowait())
+            except queue.Empty:
+                break
+
+    if not collected:
+        return None
+    audio = numpy.concatenate(collected)
+    if len(audio) < SAMPLE_RATE * .2:
+        return None
+    return audio[:SAMPLE_RATE * max_seconds]
+
+
+def monitor(vad, device=None, seconds=15):
+    """Live meter: is audio arriving, and does the VAD think it is speech?
+
+    The decisive diagnostic when nothing gets recorded. A flat peak near 0.000 means
+    the microphone is not reaching us; a healthy peak with a low probability means the
+    VAD threshold is wrong for this microphone.
+    """
+    import numpy
+    import sounddevice
+
+    blocks = queue.Queue()
+
+    def callback(indata, _frames, _time, status):
+        if status:
+            print(f'  audio status: {status}', file=sys.stderr)
+        blocks.put(indata[:, 0].copy())
+
+    name = sounddevice.query_devices(device if device is not None else
+                                    sounddevice.default.device[0])['name']
+    print(f'Device: {name}')
+    print(f'Speak normally for {seconds} seconds.\n')
+    print('  peak    rms      vad    speech?')
+
+    vad.reset()
+    peaks, probabilities = [], []
+    frames_per_line = int(.25 * SAMPLE_RATE / FRAME)
+    batch = []
+    with sounddevice.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='float32',
+                                 blocksize=FRAME, device=device, callback=callback):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            try:
+                frame = blocks.get(timeout=1)
+            except queue.Empty:
+                print('  (no audio blocks arriving at all)')
+                continue
+            probability = vad.probability(frame)
+            batch.append((float(numpy.abs(frame).max()), float(numpy.sqrt((frame ** 2).mean())), probability))
+            if len(batch) >= frames_per_line:
+                peak = max(item[0] for item in batch)
+                rms = max(item[1] for item in batch)
+                best = max(item[2] for item in batch)
+                bar = '#' * min(40, int(peak * 80))
+                print(f'  {peak:.3f}   {rms:.3f}    {best:.2f}   {"SPEECH" if best >= SPEECH_ON else "      "}  {bar}')
+                peaks.append(peak)
+                probabilities.append(best)
+                batch = []
+
+    if not peaks:
+        print('\nNo audio arrived. The microphone is not reachable from Python.')
+        return
+    print(f'\nloudest peak     {max(peaks):.3f}   (speech normally peaks above 0.05)')
+    print(f'highest vad      {max(probabilities):.2f}   (threshold is {SPEECH_ON})')
+    print(f'frames over {SPEECH_ON}  {sum(1 for p in probabilities if p >= SPEECH_ON)} of {len(probabilities)}')
+    if max(peaks) < .01:
+        print('\nDIAGNOSIS: the microphone is delivering near-silence. Wrong input device,')
+        print('or Windows microphone access is blocked. Try --devices and pass --device N.')
+    elif max(probabilities) < SPEECH_ON:
+        print(f'\nDIAGNOSIS: audio is arriving but the VAD never crossed {SPEECH_ON}.')
+        print('Lower it with --speech-threshold, or the microphone level is very low.')
+    else:
+        print('\nDIAGNOSIS: audio and speech detection both look healthy.')
+
+
+def session(ears, vad, device, language, count, out_path, push=False):
     """Record a numbered batch of spoken commands and log exactly what Whisper heard.
 
     The log is the raw material for the Sinhala alias table: the transcripts Whisper
@@ -252,13 +350,20 @@ def session(ears, vad, device, language, count, out_path):
     start_at = len(entries) + 1
 
     print(f'\nRecording {count} commands, starting at number {start_at}.')
-    print('Speak naturally, then pause. Press Ctrl+C to stop early.')
+    if push:
+        print('Press Enter to start recording, speak, then press Enter again to stop.')
+    else:
+        print('Speak naturally, then pause. Press Ctrl+C to stop early.')
     print(f'Saving to {out_path}\n')
 
     try:
         for index in range(start_at, start_at + count):
-            input(f'[{index}] Press Enter, then speak... ')
-            audio = record_utterance(vad, device, timeout=25)
+            if push:
+                input(f'[{index}] Press Enter to start... ')
+                audio = record_push(device)
+            else:
+                input(f'[{index}] Press Enter, then speak... ')
+                audio = record_utterance(vad, device, timeout=25)
             if audio is None:
                 print('     nothing heard - repeating this one\n')
                 continue
@@ -285,18 +390,33 @@ def session(ears, vad, device, language, count, out_path):
 
 
 def main():
+    global SPEECH_ON, SPEECH_OFF
     parser = argparse.ArgumentParser(description='JARVIS microphone and transcription loop')
     parser.add_argument('--once', action='store_true', help='record a single utterance and print it')
     parser.add_argument('--session', type=int, metavar='N',
                         help='record N numbered commands and log every transcript')
     parser.add_argument('--out', default='data/voice/transcripts.json', help='session log path')
+    parser.add_argument('--push', action='store_true',
+                        help='push to talk: Enter to start, Enter to stop, no speech detection')
     parser.add_argument('--devices', action='store_true', help='list input devices')
     parser.add_argument('--check', action='store_true', help='verify the stack without recording')
+    parser.add_argument('--monitor', nargs='?', type=int, const=15, metavar='SECONDS',
+                        help='live microphone and speech-detection meter')
+    parser.add_argument('--speech-threshold', type=float, default=None,
+                        help=f'VAD probability to count as speech (default {SPEECH_ON})')
     parser.add_argument('--lang', default='si', help="language code, or 'auto' to detect")
     parser.add_argument('--device', type=int, default=None, help='input device number')
     parser.add_argument('--whisper-device', default='auto', choices=['auto', 'cuda', 'cpu'])
     parser.add_argument('--model', default=WHISPER_MODEL)
     args = parser.parse_args()
+
+    if args.speech_threshold is not None:
+        SPEECH_ON = args.speech_threshold
+        SPEECH_OFF = max(.05, args.speech_threshold - .2)
+        print(f'Speech threshold set to {SPEECH_ON} (off at {SPEECH_OFF:.2f})')
+
+    if args.monitor:
+        return monitor(Vad(), args.device, args.monitor)
 
     if args.devices:
         import sounddevice
@@ -328,7 +448,7 @@ def main():
         if not out_path.is_absolute():
             out_path = ROOT / out_path
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        return session(ears, vad, args.device, language, args.session, out_path)
+        return session(ears, vad, args.device, language, args.session, out_path, args.push)
 
     while True:
         audio = record_utterance(vad, args.device)

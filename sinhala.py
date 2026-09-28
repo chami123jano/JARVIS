@@ -202,7 +202,9 @@ def romanize(text):
             out.append('n' if character == ANUSVARA else 'h')
         elif character in VIRAMAS:
             pass
-        elif character.isascii() and character.isalpha():
+        elif character.isascii() and (character.isalpha() or character.isdigit()):
+            # Digits are kept: "remind me in 5 minutes" and "calculate 250 * 4" both
+            # depend on them, and dropping them silently loses the number.
             out.append(character.lower())
         elif character.lower() in LATIN_EXTRAS:
             out.append(LATIN_EXTRAS[character.lower()])

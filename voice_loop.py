@@ -369,6 +369,26 @@ class Listener:
             except Exception:
                 pass
 
+    def log_utterance(self, audio, text, language):
+        """Keep every live command as audio plus transcript.
+
+        Real use finds phrasings no test session contains, and a misheard command is
+        only fixable if the recording still exists. Never fails the request.
+        """
+        try:
+            import json
+            folder = ROOT / 'data' / 'voice' / 'live'
+            folder.mkdir(parents=True, exist_ok=True)
+            stamp = time.strftime('%Y%m%d-%H%M%S')
+            save_wav(folder / f'{stamp}.wav', audio)
+            line = json.dumps({'time': stamp, 'text': text, 'language': language,
+                               'seconds': round(len(audio) / SAMPLE_RATE, 2)},
+                              ensure_ascii=False)
+            with (folder / 'log.jsonl').open('a', encoding='utf-8') as output:
+                output.write(line + '\n')
+        except Exception:
+            pass
+
     def stream(self):
         import numpy
         import sounddevice
@@ -439,6 +459,12 @@ class Listener:
         text, elapsed, info = self.ears.transcribe(audio, self.language)
         detected = getattr(info, 'language', '?')
         print(f'  heard [{len(audio)/SAMPLE_RATE:.1f}s, {elapsed:.2f}s, {detected}]: {text}', flush=True)
+        try:
+            from sinhala import normalize
+            print(f'  phonetic: {normalize(text)}', flush=True)
+        except Exception:
+            pass
+        self.log_utterance(audio, text, detected)
         if not text.strip():
             self.set_state('idle')
             return False
@@ -728,6 +754,45 @@ def wake_test(device=None, threshold=WAKE_THRESHOLD, seconds=30):
     return 0
 
 
+# A matched command becomes a clear English instruction. The model still runs, so it can
+# phrase the answer and use its tools, but it is no longer trying to read Tamil script.
+COMMAND_PROMPTS = {
+    'time': 'Tell me the current time.',
+    'weather': 'What is the weather in Colombo right now?',
+    'system_status': 'Report the system status using the system_status tool.',
+    'battery': 'Report the battery level using the system_status tool.',
+    'send_message': 'The user wants to send a message. Ask who it should go to and what it should say.',
+    'reminder': 'Set a reminder.',
+    'play_music': 'Play some music.',
+    'volume_up': 'Turn the volume up.',
+    'volume_down': 'Turn the volume down.',
+    'open_app': 'Open the application the user asked for.',
+    'dollar_rate': 'What is the US dollar to Sri Lankan rupee rate today?',
+    'save_note': 'Save a note. Ask what it should say if it is not clear.',
+    'list_notes': 'List my saved notes using list_records.',
+    'news': 'What is in the news today in Sri Lanka?',
+    'email': 'Check my email.',
+    'screenshot': 'Take a screenshot.',
+    'lock_pc': 'Lock the computer.',
+    'calculate': 'Work out the calculation the user asked for.',
+    'capabilities': 'Briefly say what you can help with.',
+    'stop': 'Acknowledge briefly and stop talking.',
+}
+
+
+def command_prompt(decision):
+    """Turn a matched command into an instruction the model can act on."""
+    instruction = COMMAND_PROMPTS.get(decision['command'], decision['text'])
+    if decision['command'] == 'reminder' and decision.get('seconds'):
+        minutes = decision['seconds'] / 60
+        instruction = (f'Set a reminder {decision["seconds"]} seconds from now '
+                       f'(about {minutes:.0f} minutes). Ask what it is for if unclear.')
+    # The original words go along too, so the model can pick up any detail the command
+    # table does not model, and can reply in the language it was spoken in.
+    return (f'{instruction}\n\n(The user said, as transcribed: "{decision["text"]}". '
+            'Reply in Sinhala if that looks like Sinhala.)')
+
+
 def wake_loop(args):
     """Always-listening JARVIS: wake word, Sinhala command, spoken Sinhala reply."""
     import speech
@@ -746,8 +811,25 @@ def wake_loop(args):
     listener = Listener(vad, ears, args.device, args.wake_threshold,
                         None if args.lang == 'auto' else args.lang)
 
+    import router as command_router
+
     def on_command(text):
-        job_id = agent.start(text)
+        # Match phonetically first. Whisper writes Sinhala in Tamil or Latin script, so
+        # the raw transcript looks like gibberish to the model even when the sounds are
+        # right. A matched command skips the model entirely and answers in about a second.
+        decision = command_router.route(text)
+        print(f'  router: {decision["action"]} {decision.get("command")} '
+              f'({decision.get("score")})', flush=True)
+        if decision['action'] == 'unclear':
+            reply = 'මට තේරුණේ නැහැ. ආයෙත් කියන්න.'      # I did not understand, say again
+            print(f'  JARVIS: {reply}', flush=True)
+            if not args.silent:
+                speech.SPEAKER.say(reply)
+            return
+        prompt = text
+        if decision['action'] == 'command':
+            prompt = command_prompt(decision)
+        job_id = agent.start(prompt)
         for _ in range(1200):
             job = agent.snapshot(job_id)
             if job['state'] not in ('running', 'stopping'):

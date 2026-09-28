@@ -32,6 +32,9 @@ class Agent:
         self.lock = threading.RLock()
         # Set False automatically when a model turns out not to support tools.
         self.native_tools = True
+        # Optional callback(answer) invoked when a request finishes. The server uses it
+        # to speak the reply; keeping it a callback leaves the agent independent of audio.
+        self.on_answer = None
 
     def start(self, prompt):
         with self.lock:
@@ -195,6 +198,11 @@ class Agent:
             with self.lock:
                 job['answer'], job['state'], job['partial'] = answer, 'done', ''
             self.event(job_id, 'Finished', 'Results saved to conversation')
+            if self.on_answer:
+                try:
+                    self.on_answer(answer)
+                except Exception as error:      # speaking must never fail a request
+                    self.event(job_id, 'Could not speak the reply', str(error)[:200], 'error')
         except InterruptedError:
             with self.lock:
                 job['state'], job['answer'] = 'cancelled', 'Stopped. Actions already completed remain in the activity log.'

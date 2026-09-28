@@ -4,6 +4,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import re
 import secrets
 import threading
 import time
@@ -39,6 +40,38 @@ def create_server(port=4190, data_dir=None):
             return True
         except Exception:
             return False
+
+    def speak(text, rate=None, blocking=False):
+        """Say a reply aloud. Never raises: losing the voice must not lose the answer."""
+        try:
+            import speech
+        except Exception as error:
+            return {'spoken': False, 'reason': 'unavailable', 'detail': str(error)[:140]}
+        rate = rate or store.config('voice_rate', '+0%')
+        if blocking:
+            return speech.SPEAKER.say(text, rate)
+        threading.Thread(target=speech.SPEAKER.say, args=(text, rate), daemon=True).start()
+        return {'speaking': True}
+
+    def speaking():
+        try:
+            import speech
+            return speech.SPEAKER.speaking
+        except Exception:
+            return False
+
+    def speak_stop():
+        try:
+            import speech
+            speech.SPEAKER.stop()
+        except Exception:
+            pass
+
+    def speak_answer(answer):
+        if store.config('voice_enabled', False):
+            speak(answer)
+
+    agent.on_answer = speak_answer
 
     def transcribe(language, timeout):
         try:
@@ -103,7 +136,10 @@ def create_server(port=4190, data_dir=None):
                 if path == '/api/state':
                     return self.send({'token': token, 'system': system_status(), 'ollama': models(),
                                       'model': store.config('model', ''), 'workspace': str(tools.workspace),
-                                      'voice': {'available': voice_ready(), 'loaded': voice['ears'] is not None},
+                                      'voice': {'available': voice_ready(), 'loaded': voice['ears'] is not None,
+                                                'speaking': speaking(),
+                                                'enabled': store.config('voice_enabled', False),
+                                                'rate': store.config('voice_rate', '+0%')},
                                       'records': store.records(), 'history': store.history(),
                                       'jobs': [agent.snapshot(key) for key in list(agent.jobs)]})
                 if path.startswith('/api/jobs/'):
@@ -133,6 +169,15 @@ def create_server(port=4190, data_dir=None):
                     return self.send({'id': agent.start(prompt)})
                 if path == '/api/stop':
                     agent.stop(body['id'])
+                    speak_stop()
+                    return self.send({'stopped': True})
+                if path == '/api/speak':
+                    text = str(body.get('text', '')).strip()
+                    if not text:
+                        raise ValueError('Nothing to say')
+                    return self.send(speak(text, body.get('rate'), bool(body.get('wait'))))
+                if path == '/api/speak/stop':
+                    speak_stop()
                     return self.send({'stopped': True})
                 if path == '/api/transcribe':
                     # 'auto' by default: measured 19/20 commands recognised against 8/20
@@ -149,15 +194,28 @@ def create_server(port=4190, data_dir=None):
                 if path == '/api/settings':
                     if any(job['state'] in ('running', 'stopping') for job in agent.jobs.values()):
                         raise ValueError('Wait for the active request before changing settings')
-                    workspace = Path(body['workspace']).expanduser().resolve()
-                    if not workspace.is_dir():
-                        raise ValueError('Workspace folder does not exist')
-                    model = str(body.get('model', ''))
-                    if model and model not in models()['models']:
-                        raise ValueError('Select an installed model')
-                    tools.workspace = workspace
-                    store.set_config('workspace', str(workspace))
-                    store.set_config('model', model)
+                    # Partial updates are allowed, so the voice toggle does not have to
+                    # resend the workspace and model just to turn speech on.
+                    if 'workspace' in body:
+                        workspace = Path(body['workspace']).expanduser().resolve()
+                        if not workspace.is_dir():
+                            raise ValueError('Workspace folder does not exist')
+                        tools.workspace = workspace
+                        store.set_config('workspace', str(workspace))
+                    if 'model' in body:
+                        model = str(body.get('model', ''))
+                        if model and model not in models()['models']:
+                            raise ValueError('Select an installed model')
+                        store.set_config('model', model)
+                    if 'voice_enabled' in body:
+                        store.set_config('voice_enabled', bool(body['voice_enabled']))
+                        if not body['voice_enabled']:
+                            speak_stop()
+                    if 'voice_rate' in body:
+                        rate = str(body['voice_rate'])
+                        if not re.fullmatch(r'[+-]\d{1,3}%', rate):
+                            raise ValueError("Speech rate looks like '+20%' or '-10%'")
+                        store.set_config('voice_rate', rate)
                     return self.send({'saved': True})
                 return self.send({'error': 'Not found'}, 404)
             except (ValueError, TypeError, KeyError, OSError) as error:

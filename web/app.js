@@ -36,8 +36,21 @@ function message(role, text, error = false) {
   article.innerHTML = `<header><i data-lucide="${role === 'user' ? 'user-round' : 'sparkles'}"></i>${role === 'user' ? 'YOU' : 'JARVIS'}</header><p></p>`;
   article.querySelector('p').textContent = text; $('#messages').append(article); icons(); $('#messages').scrollTop = $('#messages').scrollHeight;
 }
+// Speech runs on the server, not in the browser: Windows has no Sinhala voice, so the
+// browser physically cannot say a Sinhala reply. The server uses si-LK-SameeraNeural.
+// The browser voice stays only as a fallback for when the server has no audio path.
 function speak(text) {
-  if (!voiceEnabled || !window.speechSynthesis) return;
+  if (!voiceEnabled || !text) return;
+  if (state?.voice?.available) {
+    setMode('speaking');
+    api('speak', {text}).catch(error => { toast('Speech: ' + error.message); browserSpeak(text); })
+      .finally(() => { if (!activeJob && !listening && mode === 'speaking') setMode('standby'); });
+    return;
+  }
+  browserSpeak(text);
+}
+function browserSpeak(text) {
+  if (!window.speechSynthesis) return;
   speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text.slice(0, 3500));
   utterance.rate = Number(localStorage.getItem('jarvis-rate') || 1);
@@ -46,6 +59,10 @@ function speak(text) {
   utterance.onend = utterance.onerror = () => { if (!activeJob && !listening) setMode('standby'); };
   speechSynthesis.speak(utterance);
 }
+function stopSpeaking() {
+  window.speechSynthesis?.cancel();
+  if (state?.voice?.available) api('speak/stop', {}).catch(() => {});
+}
 function updateVoice() {
   localStorage.setItem('jarvis-voice', String(voiceEnabled));
   $('#voiceToggle').setAttribute('aria-pressed', String(voiceEnabled));
@@ -53,7 +70,9 @@ function updateVoice() {
   $('#voiceToggle').setAttribute('aria-label', $('#voiceToggle').title);
   $('#voiceToggle').innerHTML = `<i data-lucide="${voiceEnabled ? 'volume-2' : 'volume-x'}"></i>`;
   $('#speakSetting').checked = voiceEnabled;
-  if (!voiceEnabled) { window.speechSynthesis?.cancel(); if (mode === 'speaking') setMode('standby'); }
+  if (!voiceEnabled) { stopSpeaking(); if (mode === 'speaking') setMode('standby'); }
+  // Persist on the server too, so JARVIS keeps speaking when no browser is open.
+  if (state?.token) api('settings', {voice_enabled: voiceEnabled}).catch(() => {});
   icons();
 }
 $('#voiceToggle').onclick = () => { voiceEnabled = !voiceEnabled; updateVoice(); };
@@ -78,7 +97,7 @@ $('#micButton').onclick = () => {
 $('#allowVoice').onclick = () => { sessionStorage.setItem('jarvis-mic-consent', 'yes'); $('#voiceDialog').close(); startListening(); };
 function startListening() {
   if (activeJob) return toast('Stop the active request before recording another.');
-  window.speechSynthesis?.cancel();
+  stopSpeaking();
   const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognition = new Speech(); recognition.lang = 'en-US'; recognition.interimResults = true;
   recognition.onstart = () => { listening = true; setMode('listening'); $('#inputStatus').textContent = 'LISTENING'; $('#micButton').style.color = 'var(--red)'; };
@@ -89,7 +108,7 @@ function startListening() {
 }
 async function submit(prompt) {
   if (activeJob || !prompt.trim()) return;
-  recognition?.stop(); window.speechSynthesis?.cancel();
+  recognition?.stop(); stopSpeaking();
   $('#sendButton').disabled = true;
   try {
     const result = await api('chat', {prompt});
@@ -101,7 +120,7 @@ async function submit(prompt) {
 }
 $('#chatForm').onsubmit = event => { event.preventDefault(); submit($('#prompt').value); };
 $('#prompt').onkeydown = event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit($('#prompt').value); } };
-$('#stopButton').onclick = async () => { window.speechSynthesis?.cancel(); recognition?.stop(); if (activeJob) { try { await api('stop', {id:activeJob}); } catch (error) { toast(error.message); } } };
+$('#stopButton').onclick = async () => { stopSpeaking(); recognition?.stop(); if (activeJob) { try { await api('stop', {id:activeJob}); } catch (error) { toast(error.message); } } };
 // Shows the model's words as they stream in, so a long answer is never a blank wait.
 function streamText(text) {
   const node = $('#streaming');

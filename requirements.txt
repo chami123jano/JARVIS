@@ -9,6 +9,13 @@ sounddevice>=0.5,<1
 numpy>=2,<3
 onnxruntime>=1.30,<2
 
+# Spoken output (Day 3). Windows ships no Sinhala voice -- this machine has only
+# Microsoft David and Zira, both en-US -- so si-LK-SameeraNeural comes from Microsoft's
+# free neural endpoint. Needs the internet; speech.py falls back to SAPI when it is down.
+# Audio is decoded with PyAV (already present via faster-whisper) and played through
+# sounddevice, so playback can be interrupted mid-sentence.
+edge-tts>=7,<8
+
 # CUDA runtime for faster-whisper on an NVIDIA GPU. CTranslate2 does not bundle these
 # and fails with "Library cublas64_12.dll is not found" on the first transcription.
 # voice_loop.register_cuda_libraries() puts their site-packages folders on the DLL path.

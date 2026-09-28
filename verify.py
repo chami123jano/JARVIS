@@ -48,7 +48,7 @@ def check(day, name):
 @check('setup', 'Ollama running, correct version')
 def ollama_version():
     import requests
-    response = requests.get('http://localhost:11434/api/version', timeout=5)
+    response = requests.get('http://127.0.0.1:11434/api/version', timeout=5)
     version = response.json()['version']
     major, minor = (int(part) for part in version.split('.')[:2])
     if (major, minor) < (0, 34):
@@ -59,7 +59,7 @@ def ollama_version():
 @check('setup', 'Models installed')
 def models_present():
     import requests
-    names = [m['name'] for m in requests.get('http://localhost:11434/api/tags', timeout=5).json()['models']]
+    names = [m['name'] for m in requests.get('http://127.0.0.1:11434/api/tags', timeout=5).json()['models']]
     needed = ['qwen3.5:9b']
     missing = [n for n in needed if n not in names]
     if missing:

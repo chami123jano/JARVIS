@@ -42,7 +42,11 @@ CLAIM_PATTERNS = {
 
 
 class Agent:
-    def __init__(self, store, tools, endpoint='http://localhost:11434'):
+    # 127.0.0.1, not localhost. On Windows, requests resolves localhost to IPv6 ::1
+    # first, waits for that to fail, then falls back to IPv4 -- measured at 2.03 seconds
+    # against 0.015 for the literal address. That tax was being paid on every call to
+    # Ollama, and with a two second timeout it intermittently failed outright.
+    def __init__(self, store, tools, endpoint='http://127.0.0.1:11434'):
         self.store, self.tools, self.endpoint = store, tools, endpoint
         self.jobs = {}
         self.lock = threading.RLock()

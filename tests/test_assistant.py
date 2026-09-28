@@ -237,3 +237,57 @@ class ClaimCheckTests(AssistantBase):
         self.assertIn(job['state'], ('done', 'error'))
         corrections = sum(1 for e in job['events'] if e['label'] == 'Claimed but not done')
         self.assertLessEqual(corrections, 2, 'kept correcting indefinitely')
+
+
+class StateLatencyTests(unittest.TestCase):
+    """/api/state must answer immediately, whatever it has not imported yet.
+
+    It used to call `import voice_loop` inside the handler. That pulls in numpy and
+    onnxruntime and registers the CUDA directories, so the first request blocked for
+    seconds and sometimes exceeded its own timeout, which is what made the server test
+    fail intermittently.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_first_state_call_is_fast(self):
+        import urllib.request
+        server = create_server(0, self.root / 'server-data')
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        url = f'http://127.0.0.1:{server.server_port}/api/state'
+        try:
+            started = time.monotonic()
+            with urllib.request.urlopen(url, timeout=10) as response:
+                state = json.loads(response.read())
+            elapsed = time.monotonic() - started
+            self.assertIn('voice', state)
+            self.assertLess(elapsed, 2.0,
+                            f'the first /api/state took {elapsed:.2f}s')
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
+class EndpointTests(unittest.TestCase):
+    """Ollama is reached by address, not by name.
+
+    On Windows, requests resolves 'localhost' to IPv6 ::1 first and waits for that to
+    fail before trying IPv4. Measured: 2.03 seconds per call against 0.015 for the
+    literal address. Every model request paid it, and a two second timeout then failed
+    intermittently -- which is what made the server test flaky.
+    """
+
+    def test_default_endpoint_is_a_literal_address(self):
+        from assistant_core import Store, Tools
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            store = Store(root / 'e.db')
+            agent = Agent(store, Tools(store, root / 'workspace'))
+        self.assertIn('127.0.0.1', agent.endpoint)
+        self.assertNotIn('localhost', agent.endpoint,
+                         'localhost costs two seconds per call on Windows')

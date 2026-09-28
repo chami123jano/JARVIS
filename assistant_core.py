@@ -221,6 +221,18 @@ class Tools:
                 raise ValueError('Available applications: notepad, calculator, paint, explorer')
             proc = subprocess.Popen(apps[app], shell=False)
             return {'launched': app, 'process_id': proc.pid}
+        if name == 'translate':
+            # Translation runs on the model, not here. This tool exists so the agent has
+            # an explicit place to put it and so the direction is never guessed.
+            text = str(args.get('text', '')).strip()[:2000]
+            if not text:
+                raise ValueError('Nothing to translate')
+            target = str(args.get('to', '')).lower().strip()
+            if target not in ('si', 'en', 'sinhala', 'english'):
+                raise ValueError("Translate to 'si' or 'en'")
+            return {'text': text, 'to': 'si' if target.startswith('si') else 'en',
+                    'note': 'Translate this yourself and reply with the translation only. '
+                            'Leave names of people and places unchanged.'}
         if name in ('web_search', 'play_music'):
             query = str(args['query']).strip()[:500]
             base = 'https://www.youtube.com/results?search_query=' if name == 'play_music' else 'https://www.google.com/search?q='
@@ -240,6 +252,8 @@ TOOL_DEFINITIONS = {
     'read_document': ('Read a document relative to the selected workspace.', {'path': 'string'}),
     'write_document': ('Create a NEW text, Markdown or CSV report in the workspace. Never overwrites.', {'path': 'string', 'content': 'string'}),
     'open_app': ('Launch notepad, calculator, paint or explorer.', {'app': 'string'}),
+    'translate': ('Translate text between Sinhala and English. Names of people and '
+                  'places are left as they are.', {'text': 'string', 'to': 'string'}),
     'web_search': ('Open browser search. Does not retrieve results.', {'query': 'string'}),
     'play_music': ('Open YouTube search. Does not start playback.', {'query': 'string'}),
 }

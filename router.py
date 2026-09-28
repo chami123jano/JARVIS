@@ -276,13 +276,17 @@ def route(text):
     action='command' to run it directly, 'model' to let the language model handle it,
     'unclear' to ask the user to repeat.
     """
+    from responses import language_of
     cleaned = normalize(text)
+    language = language_of(text)
     if not cleaned:
         return {'action': 'unclear', 'reason': 'nothing recognisable', 'text': text,
-                'phonetic': ''}
+                'phonetic': '', 'language': language}
     name, score, second, second_score = match(text)
     result = {'text': text, 'phonetic': cleaned, 'command': name, 'score': round(score, 3),
-              'runner_up': second, 'runner_up_score': round(second_score, 3)}
+              'runner_up': second, 'runner_up_score': round(second_score, 3),
+              # Replies follow the language they were asked in.
+              'language': language}
     if score < ACCEPT:
         result.update(action='model', reason='no command matched')
         return result

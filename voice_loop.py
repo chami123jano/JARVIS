@@ -974,28 +974,29 @@ def build_brain(args):
         decision = command_router.route(text)
         print(f'  router: {decision["action"]} {decision.get("command")} '
               f'({decision.get("score")})', flush=True)
+        lang = decision.get('language', 'si')
         if decision['action'] == 'unclear':
-            reply = responses.say_not_understood()
+            reply = responses.say_not_understood(lang)
         elif decision['action'] == 'ask':
-            reply = responses.say_need_detail(decision.get('detail', ''))
+            reply = responses.say_need_detail(decision.get('detail', ''), lang)
         elif decision['action'] == 'command' and decision['command'] == 'save_note':
             # Saved here rather than by the model, which once announced it had saved a
             # note and never called the tool. The database is the proof, not the reply.
             try:
                 tools.execute('save_note', {'title': decision['content'], 'content': ''})
-                reply = responses.say_note_saved(decision['content'])
+                reply = responses.say_note_saved(decision['content'], lang)
             except Exception as error:
                 print(f'  save failed: {error}', file=sys.stderr)
-                reply = 'සටහන සේව් කරන්න බැරි වුණා.'
+                reply = responses.say_failed('note', lang)
         elif decision['action'] == 'command' and decision['command'] in responses.DIRECT:
             # The tool already has the numbers. Asking a model to phrase them costs a
             # second and invents details: it once reported no battery reading when the
             # tool had returned one, and read the time back as "පස්වරු 14:32".
             try:
-                reply = responses.answer(decision['command'], tools, store)
+                reply = responses.answer(decision['command'], tools, store, lang)
             except Exception as error:
                 print(f'  direct answer failed: {error}', file=sys.stderr)
-                reply = responses.say_not_understood()
+                reply = responses.say_not_understood(lang)
         elif decision['action'] == 'command' and decision['command'] == 'reminder' \
                 and decision.get('seconds'):
             try:
@@ -1006,10 +1007,10 @@ def build_brain(args):
                 title = decision.get('content') or decision['text']
                 tools.execute('set_reminder', {'title': title, 'due': due})
                 reply = responses.say_reminder_set(decision.get('content', ''),
-                                                   decision['seconds'])
+                                                   decision['seconds'], lang)
             except Exception as error:
                 print(f'  reminder failed: {error}', file=sys.stderr)
-                reply = responses.say_not_understood()
+                reply = responses.say_failed('reminder', lang)
         else:
             prompt = command_prompt(decision) if decision['action'] == 'command' else text
             job_id = agent.start(prompt)

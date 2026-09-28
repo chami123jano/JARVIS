@@ -3,6 +3,7 @@ import argparse
 import json
 import mimetypes
 import os
+import sys
 from pathlib import Path
 import re
 import secrets
@@ -32,14 +33,25 @@ def create_server(port=4190, data_dir=None):
 
     # Whisper and the VAD load once and stay resident; the microphone is exclusive,
     # so one transcription at a time.
-    voice = {'ears': None, 'vad': None, 'lock': threading.Lock()}
+    voice = {'ears': None, 'vad': None, 'lock': threading.Lock(), 'available': None}
 
-    def voice_ready():
+    def probe_voice():
+        """Import the audio stack once, off the request path.
+
+        voice_loop pulls in numpy and onnxruntime and registers the CUDA directories, so
+        the first import takes seconds. Doing it inside a request meant the first
+        /api/state blocked for that long, sometimes past its own timeout.
+        """
         try:
             import voice_loop  # noqa: F401
-            return True
+            voice['available'] = True
         except Exception:
-            return False
+            voice['available'] = False
+
+    threading.Thread(target=probe_voice, daemon=True).start()
+
+    def voice_ready():
+        return bool(voice.get('available'))
 
     def speak(text, rate=None, blocking=False):
         """Say a reply aloud. Never raises: losing the voice must not lose the answer."""
@@ -54,11 +66,10 @@ def create_server(port=4190, data_dir=None):
         return {'speaking': True}
 
     def speaking():
-        try:
-            import speech
-            return speech.SPEAKER.speaking
-        except Exception:
-            return False
+        # Only ask a module already imported: importing speech here would put the same
+        # multi-second first-import cost back on the request path.
+        module = sys.modules.get('speech')
+        return bool(module and module.SPEAKER.speaking)
 
     def speak_stop():
         try:
@@ -105,12 +116,20 @@ def create_server(port=4190, data_dir=None):
         its own timeout. One caller refreshes; the rest are served the previous answer.
         """
         with model_lock:
-            fresh = time.monotonic() - model_cache['at'] <= 8
-            if fresh or model_cache.get('refreshing'):
-                return {key: value for key, value in model_cache.items()
-                        if key not in ('at', 'refreshing')}
-            model_cache['refreshing'] = True
+            stale = time.monotonic() - model_cache['at'] > 8
+            if stale and not model_cache.get('refreshing'):
+                model_cache['refreshing'] = True
+                threading.Thread(target=refresh_models, daemon=True).start()
+            return {key: value for key, value in model_cache.items()
+                    if key not in ('at', 'refreshing')}
 
+    def refresh_models():
+        """Ask Ollama what is installed, off the request path.
+
+        Nobody waits for this. Asking Ollama takes up to two seconds while it is loading
+        a model, and no page should stall for that; the console polls state anyway, so a
+        slightly stale list corrects itself within a second.
+        """
         online, names = False, []
         try:
             response = requests.get(agent.endpoint + '/api/tags', timeout=2)
@@ -118,12 +137,9 @@ def create_server(port=4190, data_dir=None):
             online, names = True, [m['name'] for m in response.json()['models']]
         except (requests.RequestException, ValueError, KeyError):
             pass
-
         with model_lock:
             model_cache.update(online=online, models=names,
                                at=time.monotonic(), refreshing=False)
-            return {key: value for key, value in model_cache.items()
-                    if key not in ('at', 'refreshing')}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):

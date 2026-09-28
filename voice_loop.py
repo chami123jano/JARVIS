@@ -159,6 +159,92 @@ class Vad:
         return float(self.numpy.asarray(outputs[0]).reshape(-1)[0])
 
 
+class Hearing:
+    """Google first for accuracy, Whisper when offline. One interface for both.
+
+    Whisper is loaded lazily: if Google is answering there is no reason to spend twelve
+    seconds and 1.5 GB of VRAM on a model that will not be used.
+    """
+
+    def __init__(self, engine='auto', model=None, whisper_device='auto', language='si-LK'):
+        self.engine = engine
+        self.model_name = model or WHISPER_MODEL
+        self.whisper_device = whisper_device
+        self.language = language
+        self.google = None
+        self.whisper = None
+        self.device = engine
+        self.failures = 0
+        if engine in ('auto', 'google'):
+            try:
+                self.google = GoogleEars(language)
+            except Exception as error:
+                print(f'Google recogniser unavailable: {str(error)[:100]}', file=sys.stderr)
+        if engine == 'whisper' or self.google is None:
+            self.load_whisper()
+
+    def load_whisper(self):
+        if self.whisper is None:
+            self.whisper = Ears(self.model_name, self.whisper_device)
+        return self.whisper
+
+    def transcribe(self, audio, language=None):
+        if self.google is not None and self.engine != 'whisper':
+            try:
+                text, seconds, info = self.google.transcribe(audio, language)
+                self.failures = 0
+                if text:
+                    return text, seconds, info
+                # Silence is a legitimate empty answer, not a failure.
+                if len(audio) / SAMPLE_RATE < 1.0:
+                    return text, seconds, info
+            except Exception as error:
+                self.failures += 1
+                print(f'  (google failed: {str(error)[:70]}; using Whisper)', flush=True)
+                if self.failures >= 3 and self.engine == 'auto':
+                    print('  (repeated failures: staying on Whisper)', flush=True)
+                    self.engine = 'whisper'
+        return self.load_whisper().transcribe(audio, language)
+
+
+class GoogleEars:
+    """Google's si-LK recogniser, reached through the free SpeechRecognition endpoint.
+
+    Measured on the same twenty recordings as Whisper:
+
+        Google si-LK    mean 0.940   20/20 usable   1.68s
+        Whisper turbo   mean 0.758   16/20 usable   0.48s
+
+    Google is not merely more accurate, it returns proper Sinhala script instead of
+    Tamil or German transliteration. It needs the internet and sends the clip to Google,
+    so Whisper stays as the offline fallback and can be chosen outright.
+    """
+
+    def __init__(self, language='si-LK', timeout=12):
+        import speech_recognition as sr
+        self.sr = sr
+        self.recognizer = sr.Recognizer()
+        self.recognizer.operation_timeout = timeout
+        self.language = language
+        self.device = 'google'
+        self.compute = language
+        self.load_seconds = 0.0
+
+    def transcribe(self, audio, language=None):
+        """Return (text, seconds, info) to match the Whisper interface."""
+        import numpy
+        started = time.monotonic()
+        samples = (numpy.clip(audio, -1, 1) * 32767).astype('<i2')
+        data = self.sr.AudioData(samples.tobytes(), SAMPLE_RATE, 2)
+        try:
+            text = self.recognizer.recognize_google(data, language=self.language)
+        except self.sr.UnknownValueError:
+            text = ''
+        info = type('Info', (), {'language': self.language.split('-')[0],
+                                 'language_probability': 1.0})()
+        return text.strip(), time.monotonic() - started, info
+
+
 class Ears:
     """Loads Whisper once, then transcribes short utterances."""
 
@@ -913,7 +999,7 @@ def talk_loop(args):
     whenever the always-listening loop misbehaves.
     """
     respond, _ = build_brain(args)
-    ears = Ears(args.model, args.whisper_device)
+    ears = Hearing(args.stt, args.model, args.whisper_device)
     language = None if args.lang == 'auto' else args.lang
 
     print('\nPush to talk. Enter to start, Enter again to stop. Ctrl+C to quit.\n')
@@ -946,7 +1032,7 @@ def wake_loop(args):
     """Always-listening JARVIS: wake word, Sinhala command, spoken Sinhala reply."""
     respond, speech = build_brain(args)
     vad = Vad()
-    ears = Ears(args.model, args.whisper_device)
+    ears = Hearing(args.stt, args.model, args.whisper_device)
     listener = Listener(vad, ears, args.device, args.wake_threshold,
                         None if args.lang == 'auto' else args.lang)
 
@@ -995,8 +1081,11 @@ def main():
                         help='live microphone and speech-detection meter')
     parser.add_argument('--speech-threshold', type=float, default=None,
                         help=f'VAD probability to count as speech (default {SPEECH_ON})')
+    parser.add_argument('--stt', default='auto', choices=['auto', 'google', 'whisper'],
+                        help='speech recogniser. auto (default) uses Google for Sinhala '
+                             'and falls back to Whisper offline')
     parser.add_argument('--lang', default='auto',
-                        help="'auto' (default, measured best for Sinhala) or a language code")
+                        help="Whisper only: 'auto' (measured best) or a language code")
     parser.add_argument('--device', type=int, default=None, help='input device number')
     parser.add_argument('--whisper-device', default='auto', choices=['auto', 'cuda', 'cpu'])
     parser.add_argument('--model', default=WHISPER_MODEL)
@@ -1034,7 +1123,7 @@ def main():
         vad = Vad()
         import numpy
         print('vad silence   ', f'{vad.probability(numpy.zeros(FRAME, dtype=numpy.float32)):.3f} (expect near 0)')
-        ears = Ears(args.model, args.whisper_device)
+        ears = Hearing(args.stt, args.model, args.whisper_device)
         text, seconds, _ = ears.transcribe(numpy.zeros(SAMPLE_RATE, dtype=numpy.float32), language=None)
         print('whisper silence', f'{seconds:.2f}s ->', repr(text))
         print('OK: microphone, VAD and Whisper all load.')
@@ -1042,7 +1131,7 @@ def main():
 
     language = None if args.lang == 'auto' else args.lang
     vad = Vad()
-    ears = Ears(args.model, args.whisper_device)
+    ears = Hearing(args.stt, args.model, args.whisper_device)
 
     if args.session:
         out_path = Path(args.out)

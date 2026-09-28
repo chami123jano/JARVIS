@@ -16,6 +16,13 @@ onnxruntime>=1.30,<2
 # sounddevice, so playback can be interrupted mid-sentence.
 edge-tts>=7,<8
 
+# Google's si-LK speech recogniser, through the free endpoint. Measured on the same 20
+# Sinhala recordings as Whisper: mean 0.940 against 0.758, 20 of 20 usable against 16,
+# and it returns proper Sinhala script rather than Tamil or German transliteration.
+# Needs the internet and sends the clip to Google; voice_loop falls back to local
+# Whisper automatically when it is unreachable.
+SpeechRecognition>=3.10,<4
+
 # CUDA runtime for faster-whisper on an NVIDIA GPU. CTranslate2 does not bundle these
 # and fails with "Library cublas64_12.dll is not found" on the first transcription.
 # voice_loop.register_cuda_libraries() puts their site-packages folders on the DLL path.

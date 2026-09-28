@@ -13,6 +13,7 @@ Speech detection uses Silero VAD as a plain ONNX model rather than the pip packa
 which would drag in PyTorch (~2.5 GB) for a 2 MB model.
 """
 import argparse
+import datetime as dt
 import os
 import queue
 import sys
@@ -962,13 +963,34 @@ def build_brain(args):
     if not store.config('model', ''):
         raise SystemExit('No model configured. Choose one in Settings first.')
 
+    import responses
+
     def respond(text, speak=True, on_state=None):
         """Route, act, and say the answer. Returns the reply text."""
         decision = command_router.route(text)
         print(f'  router: {decision["action"]} {decision.get("command")} '
               f'({decision.get("score")})', flush=True)
         if decision['action'] == 'unclear':
-            reply = 'මට තේරුණේ නැහැ. ආයෙත් කියන්න.'      # I didn't catch that, say again
+            reply = responses.say_not_understood()
+        elif decision['action'] == 'command' and decision['command'] in responses.DIRECT:
+            # The tool already has the numbers. Asking a model to phrase them costs a
+            # second and invents details: it once reported no battery reading when the
+            # tool had returned one, and read the time back as "පස්වරු 14:32".
+            try:
+                reply = responses.answer(decision['command'], tools, store)
+            except Exception as error:
+                print(f'  direct answer failed: {error}', file=sys.stderr)
+                reply = responses.say_not_understood()
+        elif decision['action'] == 'command' and decision['command'] == 'reminder' \
+                and decision.get('seconds'):
+            try:
+                due = (dt.datetime.now().astimezone()
+                       + dt.timedelta(seconds=decision['seconds'])).isoformat()
+                tools.execute('set_reminder', {'title': decision['text'], 'due': due})
+                reply = responses.say_reminder_set('', decision['seconds'])
+            except Exception as error:
+                print(f'  reminder failed: {error}', file=sys.stderr)
+                reply = responses.say_not_understood()
         else:
             prompt = command_prompt(decision) if decision['action'] == 'command' else text
             job_id = agent.start(prompt)

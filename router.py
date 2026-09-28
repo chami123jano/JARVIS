@@ -76,8 +76,10 @@ COMMANDS = {
     ],
     'save_note': [
         'සටහනක් සේව් කරන්න', 'නෝට් එකක් ලියන්න', 'සටහනක් ලියන්න',
+        # How it was actually said in use, which the invented phrasings missed.
+        'සටහනක් තබන්න', 'සටහනක් දාන්න', 'නෝට් එකක් තියන්න',
         'satahanak save karanna', 'note ekak save karanna', 'satahanak liyanna',
-        'save a note', 'take a note',
+        'satahanak thabanna', 'save a note', 'take a note',
     ],
     'list_notes': [
         'මගේ සටහන් පෙන්නන්න', 'සටහන් පෙන්නන්න', 'නෝට්ස් පෙන්නන්න',
@@ -141,11 +143,29 @@ UNITS = {
 }
 
 
+def phrase_score(text, phrase):
+    """How well a phrasing fits, allowing for content after the command.
+
+    "සටහනක් තබන්න අද රෑට කෑම තියන්න එපා" is a save-note order with a long note attached.
+    Compared whole, the note drowns the command and it scored 0.366 -- far too low to
+    act on, so JARVIS handed it to the model, which said it had saved a note and did
+    not. Comparing the head of the utterance as well keeps the command visible.
+    """
+    whole = similarity(text, phrase)
+    target = normalize(phrase).replace(' ', '')
+    heard = normalize(text).replace(' ', '')
+    if len(heard) <= len(target) + 3:
+        return whole
+    # Commands lead and content follows, so the opening should look like the phrasing.
+    head = heard[:len(target) + 2]
+    return max(whole, similarity(head, target))
+
+
 def match(text):
     """Best command for this transcript: (name, score, runner_up, runner_up_score)."""
     scored = []
     for name, phrasings in COMMANDS.items():
-        best = max(similarity(text, phrase) for phrase in phrasings)
+        best = max(phrase_score(text, phrase) for phrase in phrasings)
         scored.append((best, name))
     scored.sort(reverse=True)
     (top_score, top), (second_score, second) = scored[0], scored[1]
@@ -212,6 +232,44 @@ def extract_duration(text):
     return None
 
 
+# Words that are part of giving the order, not part of what was asked for. Stripped so a
+# note reads "අද රෑට කෑම තියන්න එපා" rather than repeating the instruction back.
+FILLER = {
+    'save_note': ['සටහනක්', 'සටහන', 'තබන්න', 'සේව්', 'ලියන්න', 'දාන්න', 'කියලා',
+                  'satahanak', 'satahan', 'note', 'save', 'ekak', 'liyanna', 'thabanna'],
+    'reminder': ['මතක්', 'කරන්න', 'කියලා', 'mathak', 'karanna', 'remind', 'me', 'to',
+                 'minitthu', 'minute', 'minutes', 'hour', 'hours', 'dahayakin', 'pahakin'],
+    'send_message': ['මැසේජ්', 'එකක්', 'යවන්න', 'කියලා', 'message', 'ekak', 'yavanna',
+                     'send', 'a', 'to'],
+}
+
+
+def strip_command(text, command):
+    """What is left after removing the words that gave the order.
+
+    Two passes: the phrasing that matched, and a per-command filler list. The threshold
+    is deliberately high, because "තබන්න" (put/save, the order) and "තියන්න" (keep, which
+    may be the content) sound close, and eating the content is worse than leaving a
+    stray word in it.
+    """
+    from difflib import SequenceMatcher
+    phrasings = COMMANDS.get(command, [])
+    best = max(phrasings, key=lambda p: similarity(text, p)) if phrasings else ''
+    targets = [normalize(word) for word in best.split()]
+    targets += [normalize(word) for word in FILLER.get(command, [])]
+    targets = [t for t in targets if t]
+
+    kept = []
+    for word in str(text).split():
+        cleaned = normalize(word)
+        if not cleaned:
+            continue
+        if any(SequenceMatcher(None, cleaned, target).ratio() >= .85 for target in targets):
+            continue
+        kept.append(word)
+    return ' '.join(kept).strip(' .,!?।')
+
+
 def route(text):
     """Decide what to do with a transcript.
 
@@ -239,8 +297,15 @@ def route(text):
     if name == 'reminder':
         seconds = extract_duration(text)
         result['seconds'] = seconds
+        result['content'] = strip_command(text, name)
         if not seconds:
             result.update(action='model', reason='reminder without a clear time')
+    elif name in ('save_note', 'send_message'):
+        result['content'] = strip_command(text, name)
+        if not result['content']:
+            # "save a note" with nothing to save. Ask, rather than saving an empty note
+            # or letting the model invent one.
+            result.update(action='ask', detail='note' if name == 'save_note' else 'message')
     return result
 
 

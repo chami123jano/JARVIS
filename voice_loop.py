@@ -976,6 +976,17 @@ def build_brain(args):
               f'({decision.get("score")})', flush=True)
         if decision['action'] == 'unclear':
             reply = responses.say_not_understood()
+        elif decision['action'] == 'ask':
+            reply = responses.say_need_detail(decision.get('detail', ''))
+        elif decision['action'] == 'command' and decision['command'] == 'save_note':
+            # Saved here rather than by the model, which once announced it had saved a
+            # note and never called the tool. The database is the proof, not the reply.
+            try:
+                tools.execute('save_note', {'title': decision['content'], 'content': ''})
+                reply = responses.say_note_saved(decision['content'])
+            except Exception as error:
+                print(f'  save failed: {error}', file=sys.stderr)
+                reply = 'සටහන සේව් කරන්න බැරි වුණා.'
         elif decision['action'] == 'command' and decision['command'] in responses.DIRECT:
             # The tool already has the numbers. Asking a model to phrase them costs a
             # second and invents details: it once reported no battery reading when the
@@ -990,8 +1001,12 @@ def build_brain(args):
             try:
                 due = (dt.datetime.now().astimezone()
                        + dt.timedelta(seconds=decision['seconds'])).isoformat()
-                tools.execute('set_reminder', {'title': decision['text'], 'due': due})
-                reply = responses.say_reminder_set('', decision['seconds'])
+                # The content, not the whole utterance: a reminder titled "මිනිත්තු
+                # දහයකින් මතක් කරන්න" tells you nothing when it fires.
+                title = decision.get('content') or decision['text']
+                tools.execute('set_reminder', {'title': title, 'due': due})
+                reply = responses.say_reminder_set(decision.get('content', ''),
+                                                   decision['seconds'])
             except Exception as error:
                 print(f'  reminder failed: {error}', file=sys.stderr)
                 reply = responses.say_not_understood()

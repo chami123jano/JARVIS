@@ -116,3 +116,53 @@ class DurationTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ContentExtractionTests(unittest.TestCase):
+    """Separating the order from what was asked for.
+
+    From the live log: "සටහනක් තබන්න අද රෑට කෑම තියන්න එපා කියලා" scored 0.366 because
+    the note drowned the command, so it went to the model, which announced it had saved
+    a note and never called the tool. The database had none.
+    """
+
+    def test_the_command_survives_a_long_attachment(self):
+        from router import CONFIDENT
+        outcome = route('සටහනක් තබන්න අද රෑට කෑම තියන්න එපා කියලා')
+        self.assertEqual(outcome['command'], 'save_note')
+        self.assertGreaterEqual(outcome['score'], CONFIDENT)
+        self.assertEqual(outcome['action'], 'command')
+
+    def test_note_content_excludes_the_order(self):
+        outcome = route('සටහනක් තබන්න අද රෑට කෑම තියන්න එපා කියලා')
+        self.assertEqual(outcome['content'], 'අද රෑට කෑම තියන්න එපා')
+
+    def test_content_words_that_sound_like_the_order_are_kept(self):
+        """තබන්න is the order and තියන්න may be the note. Eating the note is worse."""
+        outcome = route('සටහනක් තබන්න අද රෑට කෑම තියන්න එපා කියලා')
+        self.assertIn('තියන්න', outcome['content'])
+
+    def test_reminder_content_is_separated_from_the_time(self):
+        outcome = route('මිනිත්තු දහයකින් මතක් කරන්න ලයිට් බිල ගෙවන්න')
+        self.assertEqual(outcome['seconds'], 600)
+        self.assertEqual(outcome['content'], 'ලයිට් බිල ගෙවන්න')
+
+    def test_a_bare_order_asks_instead_of_saving_nothing(self):
+        for text, detail in [('සටහනක් තබන්න', 'note'),
+                             ('මැසේජ් එකක් යවන්න', 'message')]:
+            with self.subTest(text=text):
+                outcome = route(text)
+                self.assertEqual(outcome['action'], 'ask')
+                self.assertEqual(outcome['detail'], detail)
+
+    def test_message_content_is_separated(self):
+        outcome = route('අම්මට මැසේජ් එකක් යවන්න මම රාත්‍රී එනවා')
+        self.assertEqual(outcome['command'], 'send_message')
+        self.assertIn('එනවා', outcome['content'])
+
+    def test_short_commands_are_unaffected(self):
+        for text, expected in [('දැන් වෙලාව කීයද', 'time'), ('බැටරිය කීයද', 'battery')]:
+            with self.subTest(text=text):
+                outcome = route(text)
+                self.assertEqual(outcome['command'], expected)
+                self.assertEqual(outcome['action'], 'command')

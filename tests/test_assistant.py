@@ -14,7 +14,9 @@ from agent import Agent
 from server import create_server
 
 
-class AssistantTests(unittest.TestCase):
+class AssistantBase(unittest.TestCase):
+    """Fixture only. Subclassing a class that holds tests re-runs every one of them."""
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -24,6 +26,16 @@ class AssistantTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def await_job(self, agent, job_id):
+        for _ in range(150):
+            job = agent.snapshot(job_id)
+            if job['state'] not in ('running','stopping'):
+                return job
+            time.sleep(.02)
+        self.fail('Job did not finish')
+
+
+class AssistantTests(AssistantBase):
     def test_arithmetic_limits(self):
         self.assertEqual(calculate('(120 + 80) * 1.5'), 300)
         for expression in ['__import__("os")', '9**99999999', '(1).__class__', '1/0']:
@@ -50,14 +62,6 @@ class AssistantTests(unittest.TestCase):
         self.assertTrue(self.store.records()[0]['done'])
         with self.assertRaises(ValueError):
             self.tools.execute('set_reminder', {'title':'Old reminder','due':'2000-01-01T00:00:00+00:00'})
-
-    def await_job(self, agent, job_id):
-        for _ in range(150):
-            job = agent.snapshot(job_id)
-            if job['state'] not in ('running','stopping'):
-                return job
-            time.sleep(.02)
-        self.fail('Job did not finish')
 
     def test_direct_command_without_model(self):
         agent = Agent(self.store, self.tools)
@@ -170,7 +174,7 @@ class ConcurrencyTests(unittest.TestCase):
             server.server_close()
 
 
-class ClaimCheckTests(AssistantTests):
+class ClaimCheckTests(AssistantBase):
     """The model narrates actions it did not take.
 
     Measured on qwen3.5:9b with "calculate 137*23, then save a note with the result": it

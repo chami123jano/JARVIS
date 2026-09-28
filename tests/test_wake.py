@@ -302,3 +302,44 @@ class EchoTests(unittest.TestCase):
             blocks.put(numpy.full(512, 1.0, dtype='float32'))   # the user, afterwards
         chunk = listener.take(blocks, voice_loop.FRAME)
         self.assertTrue(numpy.all(chunk == 1.0), 'old audio leaked past the flush')
+
+
+class OwnVoiceTests(unittest.TestCase):
+    """Transcripts that are JARVIS's own reply must be dropped, not routed.
+
+    Every case here is from the live log, where JARVIS asked a question, heard itself,
+    and answered its own question.
+    """
+
+    def listener(self, last_reply):
+        import voice_loop
+        with patch('openwakeword.model.Model') as model:
+            model.return_value.predict.return_value = {'hey_jarvis': 0.0}
+            listener = voice_loop.Listener(vad=MagicMock(), ears=MagicMock())
+        listener.last_reply = last_reply
+        return listener
+
+    def test_its_own_reply_is_recognised(self):
+        reply = "Tell me who the message should be sent to and what content you'd like to include."
+        listener = self.listener(reply)
+        self.assertTrue(listener.is_own_voice(
+            'Tell me who the message should be sent to and what content you would like to include.'))
+        self.assertTrue(listener.is_own_voice(
+            'Tell me who the message should go to and what you would like it to say.'))
+
+    def test_a_fragment_of_the_reply_counts(self):
+        """The microphone often catches only part of what was said."""
+        listener = self.listener('Your CPU is at forty percent and memory is fine.')
+        self.assertTrue(listener.is_own_voice('cpu is at forty percent'))
+
+    def test_real_commands_are_not_mistaken_for_the_reply(self):
+        reply = "Tell me who the message should be sent to and what content you'd like to include."
+        listener = self.listener(reply)
+        for command in ('ammata message ekak yavanna', 'age sata hana munavada',
+                        'system eke thathwaya kiyanna', 'අද කාලගුණය කොහොමද'):
+            with self.subTest(command=command):
+                self.assertFalse(listener.is_own_voice(command))
+
+    def test_no_previous_reply_means_nothing_is_filtered(self):
+        listener = self.listener('')
+        self.assertFalse(listener.is_own_voice('anything at all'))

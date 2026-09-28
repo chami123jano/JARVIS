@@ -136,3 +136,31 @@ class InterruptionTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class EmojiTests(unittest.TestCase):
+    """A reply containing an emoji must not be read out as its Unicode name.
+
+    Observed live: JARVIS answered with a smiling face, the endpoint spoke it as "smiling
+    face with smiling eyes", the microphone heard that, and it came back as a command.
+    """
+
+    def test_emoji_are_removed(self):
+        from speech import strip_unspeakable
+        self.assertEqual(strip_unspeakable('Systems ready 😊'), 'Systems ready')
+        self.assertEqual(strip_unspeakable('Battery at 80% 🔋 all good'),
+                         'Battery at 80% all good')
+        self.assertEqual(strip_unspeakable('👍'), '')
+
+    def test_sinhala_and_punctuation_survive(self):
+        from speech import strip_unspeakable
+        self.assertEqual(strip_unspeakable('මතකය හොඳින් 👍'), 'මතකය හොඳින්')
+        self.assertEqual(strip_unspeakable('CPU is at 40%. All fine!'), 'CPU is at 40%. All fine!')
+
+    def test_segments_never_contain_emoji(self):
+        from speech import segments
+        pieces = [piece for _, piece in segments('Done 🎉. හරි 😊.')]
+        self.assertTrue(pieces, 'everything was stripped')
+        for piece in pieces:
+            self.assertNotIn('🎉', piece)
+            self.assertNotIn('😊', piece)

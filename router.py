@@ -22,6 +22,9 @@ COMMANDS = {
         'දැන් වෙලාව කීයද', 'වෙලාව කීයද', 'දැන් කීයද',
         'dan velava kiyada', 'velava kiyada', 'time eka kiyada',
         'what time is it', 'the time',
+        # From the live log: how Whisper actually rendered this command in use, labelled
+        # German and Vietnamese. Real transcripts make better phrasings than invented ones.
+        'deng velave gehde', 'dang mela va kiyade',
     ],
     'weather': [
         'අද කාලගුණය කොහොමද', 'කාලගුණය කොහොමද', 'එළිය කොහොමද',

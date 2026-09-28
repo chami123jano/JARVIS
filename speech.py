@@ -46,6 +46,26 @@ def is_sinhala(text):
     return sinhala / len(letters) >= .3
 
 
+def strip_unspeakable(text):
+    """Remove emoji and symbols before synthesis.
+
+    The endpoint reads an emoji out by its Unicode name: a reply containing a smiling
+    face was spoken as "smiling face with smiling eyes", the microphone heard that, and
+    it came back as a command. Never send a picture to a voice.
+    """
+    import unicodedata
+    out = []
+    for character in str(text):
+        category = unicodedata.category(character)
+        # So, Sk and Cs are symbols, modifiers and surrogates: emoji and the like.
+        if category in ('So', 'Sk', 'Cs', 'Co', 'Cn'):
+            continue
+        if character in '‍️︎':      # zero-width joiner, variation selectors
+            continue
+        out.append(character)
+    return ' '.join(''.join(out).split())
+
+
 def segments(text):
     """Split into sentences, each tagged with the voice that should read it.
 
@@ -53,7 +73,7 @@ def segments(text):
     reading Sinhala with an English voice is unintelligible, so the split is per sentence
     rather than per reply.
     """
-    pieces = re.split(r'(?<=[.!?।])\s+|\n+', str(text).strip())
+    pieces = re.split(r'(?<=[.!?।])\s+|\n+', strip_unspeakable(text))
     out = []
     for piece in pieces:
         piece = piece.strip()

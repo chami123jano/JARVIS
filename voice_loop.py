@@ -360,6 +360,10 @@ class Listener:
         self.state = 'idle'
         self.on_state = None
         self.buffer = None
+        # What JARVIS last said. Flushing the queue removes most self-hearing, but audio
+        # already in flight through the speakers can still arrive, so a transcript that
+        # matches the last reply is discarded rather than acted on.
+        self.last_reply = ''
 
     def set_state(self, state):
         self.state = state
@@ -368,6 +372,25 @@ class Listener:
                 self.on_state(state)
             except Exception:
                 pass
+
+    def is_own_voice(self, text):
+        """Did we just hear ourselves?
+
+        Observed in the live log: JARVIS asked "Tell me who the message should go to"
+        and then transcribed that back as the user's next command, answering itself. The
+        microphone may catch only part of a reply, so a substring match counts too.
+        """
+        if not self.last_reply or not text:
+            return False
+        try:
+            from sinhala import contains, normalize, similarity
+        except Exception:
+            return False
+        if similarity(text, self.last_reply) >= .6:
+            return True
+        heard = normalize(text).replace(' ', '')
+        # Long fragments of the reply are still the reply.
+        return len(heard) >= 12 and contains(self.last_reply, text)
 
     def log_utterance(self, audio, text, language):
         """Keep every live command as audio plus transcript.
@@ -486,6 +509,11 @@ class Listener:
             pass
         self.log_utterance(audio, text, detected)
         if not text.strip():
+            self.set_state('idle')
+            return False
+        if self.is_own_voice(text):
+            print('  (that was my own voice - ignoring)', flush=True)
+            self.flush(blocks)
             self.set_state('idle')
             return False
         try:
@@ -923,7 +951,8 @@ def wake_loop(args):
                         None if args.lang == 'auto' else args.lang)
 
     def on_command(text):
-        respond(text, speak=not args.silent, on_state=listener.set_state)
+        reply = respond(text, speak=not args.silent, on_state=listener.set_state)
+        listener.last_reply = reply or ''
 
     listener.on_state = lambda state: print(f'  [{state}]', flush=True) if args.verbose else None
     # Barge-in means listening while the speakers are playing, which without echo

@@ -409,6 +409,27 @@ class WakeWord:
         return True
 
 
+def log_utterance(audio, text, language, source='', **extra):
+    """Keep every live command as audio plus transcript.
+
+    Real use finds phrasings no test session contains, and a misheard command is only
+    fixable if the recording still exists. Both loops log, because a mode that does not
+    leaves no way to tell what went wrong. Never fails the request.
+    """
+    try:
+        import json
+        folder = ROOT / 'data' / 'voice' / 'live'
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime('%Y%m%d-%H%M%S')
+        save_wav(folder / f'{stamp}.wav', audio)
+        entry = {'time': stamp, 'source': source, 'text': text, 'language': language,
+                 'seconds': round(len(audio) / SAMPLE_RATE, 2), **extra}
+        with (folder / 'log.jsonl').open('a', encoding='utf-8') as output:
+            output.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    except Exception:
+        pass
+
+
 def beep(frequency=880, seconds=.15, volume=.5):
     """Short acknowledging tone, so you know it heard its name.
 
@@ -479,25 +500,8 @@ class Listener:
         # Long fragments of the reply are still the reply.
         return len(heard) >= 12 and contains(self.last_reply, text)
 
-    def log_utterance(self, audio, text, language):
-        """Keep every live command as audio plus transcript.
-
-        Real use finds phrasings no test session contains, and a misheard command is
-        only fixable if the recording still exists. Never fails the request.
-        """
-        try:
-            import json
-            folder = ROOT / 'data' / 'voice' / 'live'
-            folder.mkdir(parents=True, exist_ok=True)
-            stamp = time.strftime('%Y%m%d-%H%M%S')
-            save_wav(folder / f'{stamp}.wav', audio)
-            line = json.dumps({'time': stamp, 'text': text, 'language': language,
-                               'seconds': round(len(audio) / SAMPLE_RATE, 2)},
-                              ensure_ascii=False)
-            with (folder / 'log.jsonl').open('a', encoding='utf-8') as output:
-                output.write(line + '\n')
-        except Exception:
-            pass
+    def log_utterance(self, audio, text, language, **extra):
+        return log_utterance(audio, text, language, source='wake', **extra)
 
     def stream(self):
         import numpy
@@ -1041,9 +1045,11 @@ def talk_loop(args):
             except Exception:
                 pass
             if not text.strip():
+                log_utterance(audio, '', detected, source='talk')
                 print('  (nothing recognised)\n')
                 continue
-            respond(text, speak=not args.silent)
+            reply = respond(text, speak=not args.silent)
+            log_utterance(audio, text, detected, source='talk', reply=reply[:300])
             print()
     except KeyboardInterrupt:
         print('\nStopped.')

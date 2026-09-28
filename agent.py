@@ -24,6 +24,22 @@ DEEP_PATTERNS = re.compile(
     r'hitha balanna|hondata hitha)\b', re.I)
 THINK_MIN_LENGTH = 180
 
+# Past-tense claims that only hold if the matching tool actually ran. Measured on
+# qwen3.5:9b: given "calculate 137*23 then save a note with the result", it called
+# calculate, then wrote "I saved a note titled Verify" without calling save_note, in
+# three runs out of five. Telling the model not to do this does not stop it; the prompt
+# already forbids it. The journal is the only reliable witness.
+CLAIM_PATTERNS = {
+    'save_note': (r"\bi(?:'ve)?\s+saved\b", r'\bsaved (?:a|the|it in a) note\b',
+                  r'\bnote (?:has been|was) saved\b', r'සටහනක්\s*\S*\s*ස[ුූ]රැ',
+                  r'සටහන\S*\s*සේව් කර', r'සටහනක් සේව් කර'),
+    'set_reminder': (r"\bi(?:'ve| have)?\s+set (?:a|the|your) reminder\b",
+                     r'\breminder (?:has been|was|is) set\b', r'මතක් කිරීමක්\s*\S*\s*දැම්ම'),
+    'write_document': (r"\bi(?:'ve)?\s+(?:created|written|wrote)\b",
+                       r'\bfile (?:has been|was) (?:created|written)\b'),
+    'remember': (r"\bi(?:'ve)?\s+remembered\b", r"\bi'?ll remember that\b"),
+}
+
 
 class Agent:
     def __init__(self, store, tools, endpoint='http://localhost:11434'):
@@ -170,6 +186,7 @@ class Agent:
                             {'role': 'user', 'content': prompt}]
                 answer = ''
                 calls = 0
+                corrections = 0
                 completed = []
                 for step in range(MAX_TOOL_CALLS + 1):
                     if job['cancel'].is_set():
@@ -181,6 +198,18 @@ class Agent:
                     tool_calls = message.get('tool_calls') or []
                     if not tool_calls:
                         answer = message.get('content', '').strip()
+                        claimed = self.unperformed_claims(answer, {name for name, _ in completed})
+                        if claimed and corrections < 2:
+                            # It described an action instead of taking it. Send it back
+                            # once rather than reporting a success that did not happen.
+                            corrections += 1
+                            self.event(job_id, 'Claimed but not done', ', '.join(claimed), 'error')
+                            messages.append({'role': 'user', 'content':
+                                'You wrote that you did this, but you never called '
+                                f'{" or ".join(claimed)}. Nothing was saved. Call the tool '
+                                'now with the real arguments, then confirm only what the '
+                                'tool returned.'})
+                            continue
                         if not answer:
                             if completed:
                                 answer = 'Verified tool results:\n\n' + '\n\n'.join(self.describe(name, value) for name, value in completed)
@@ -304,6 +333,18 @@ class Agent:
             return {'role': 'assistant', 'content': content,
                     'tool_calls': [self.validate(call) for call in tool_calls]}
         return {'role': 'assistant', 'content': content}
+
+    @staticmethod
+    def unperformed_claims(answer, performed):
+        """Tools the answer says were used, which were never called."""
+        lowered = str(answer).lower()
+        missing = []
+        for tool, patterns in CLAIM_PATTERNS.items():
+            if tool in performed:
+                continue
+            if any(re.search(pattern, lowered) for pattern in patterns):
+                missing.append(tool)
+        return missing
 
     @staticmethod
     def validate(tool_call):

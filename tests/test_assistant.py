@@ -168,3 +168,68 @@ class ConcurrencyTests(unittest.TestCase):
             release.set()
             server.shutdown()
             server.server_close()
+
+
+class ClaimCheckTests(AssistantTests):
+    """The model narrates actions it did not take.
+
+    Measured on qwen3.5:9b with "calculate 137*23, then save a note with the result": it
+    called calculate, then wrote "I saved a note titled Verify" without calling
+    save_note, in three runs out of five. The system prompt already forbids this. Only
+    the journal knows what really happened, so the answer is checked against it.
+    """
+
+    def test_a_false_claim_is_detected(self):
+        for answer in ('The result is 3151. I saved a note titled Verify.',
+                       "I've saved a note with that number.",
+                       'Verify නාමයෙන් සටහනක් සුරැකුවෙමි.',
+                       'I have set a reminder for ten minutes.'):
+            with self.subTest(answer=answer[:40]):
+                self.assertTrue(Agent.unperformed_claims(answer, set()))
+
+    def test_a_true_claim_is_accepted(self):
+        answer = 'The result is 3151. I saved a note titled Verify.'
+        self.assertEqual(Agent.unperformed_claims(answer, {'save_note'}), [])
+
+    def test_ordinary_answers_are_not_flagged(self):
+        """A false positive would send a finished request round the loop again."""
+        for answer in ('Your notes: buy milk, pay the bill.',
+                       'ඔබට සටහන් දෙකක් තියෙනවා.',
+                       'The CPU is at 40 percent.',
+                       'I will set a reminder if you tell me when.',
+                       'Would you like me to save that as a note?',
+                       'ඔබට සටහන් නැහැ.'):
+            with self.subTest(answer=answer[:40]):
+                self.assertEqual(Agent.unperformed_claims(answer, set()), [])
+
+    def test_the_agent_sends_a_false_claim_back(self):
+        """One extra turn, with the tool call, instead of a success that never happened."""
+        self.store.set_config('model', 'test')
+        agent = Agent(self.store, self.tools)
+        replies = [
+            {'role': 'assistant', 'content': '',
+             'tool_calls': [{'function': {'name': 'calculate',
+                                          'arguments': {'expression': '137*23'}}}]},
+            {'role': 'assistant', 'content': 'The result is 3151. I saved a note titled Verify.'},
+            {'role': 'assistant', 'content': '',
+             'tool_calls': [{'function': {'name': 'save_note',
+                                          'arguments': {'title': 'Verify', 'content': '3151'}}}]},
+            {'role': 'assistant', 'content': 'Done. 3151, saved as Verify.'},
+        ]
+        with patch.object(agent, 'generate', side_effect=replies):
+            job = self.await_job(agent, agent.start('Work it out and save it'))
+        self.assertEqual(job['state'], 'done')
+        self.assertTrue(any(r['title'] == 'Verify' for r in self.store.records()),
+                        'the note was still never saved')
+        self.assertTrue(any(e['label'] == 'Claimed but not done' for e in job['events']))
+
+    def test_correction_does_not_loop_forever(self):
+        """A model that keeps claiming must not spin."""
+        self.store.set_config('model', 'test')
+        agent = Agent(self.store, self.tools)
+        stubborn = {'role': 'assistant', 'content': 'I saved a note titled Verify.'}
+        with patch.object(agent, 'generate', return_value=stubborn):
+            job = self.await_job(agent, agent.start('Save a note'))
+        self.assertIn(job['state'], ('done', 'error'))
+        corrections = sum(1 for e in job['events'] if e['label'] == 'Claimed but not done')
+        self.assertLessEqual(corrections, 2, 'kept correcting indefinitely')

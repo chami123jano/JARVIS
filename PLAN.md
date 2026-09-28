@@ -564,6 +564,37 @@ perfectly well.
 **Done when:** you hear Sameera say a Sinhala sentence, and it still behaves sensibly with
 the wifi off.
 
+#### ✅ Day 3 complete — commit `10d3624`
+
+**JARVIS speaks Sinhala.** Asked *"ඔබ කවුද?"* it answered and said aloud:
+*"මම JARVIS, ඔබේ පෞද්ගලික මැජික් බොක්ස් එකයි."*
+
+| Measured | Result |
+|---|---|
+| Sinhala synthesis, first time | 1.39 s |
+| **Same phrase, cached** | **0.004 s** — 350x |
+| Mixed reply | Sinhala sentence → `si-LK-SameeraNeural`, English → `en-GB-RyanNeural` |
+| Barge-in | Stops mid-sentence ✅ |
+| Windows Sinhala voices available | **None** — only David and Zira, both en-US |
+
+**Design decisions worth keeping:**
+
+- **Route per sentence, not per reply.** Replies are routinely mixed, and Sinhala read by
+  an English voice is unintelligible.
+- **Play through PyAV plus sounddevice**, not a media player, so speech can be cut off
+  mid-sentence. Day 4 depends on this.
+- **Interruption is a counter, not a flag.** A flag has to be cleared when speech starts,
+  which silently discards a stop issued while the audio was still being fetched — exactly
+  what happens when you talk over JARVIS. A counter makes a stop cancel every request
+  issued so far and no later one. The unit test for this failed twice before the design
+  was right, and both failures were real.
+- **Re-check for a stop *after* synthesis**, since fetching takes over a second cold.
+
+**A trap worth remembering:** testing this with PowerShell's `Invoke-RestMethod` showed
+the English voice only, which looked like a language-routing bug. PowerShell 5.1 encodes
+request bodies as ISO-8859-1 and destroyed the Sinhala in transit. Sending proper UTF-8
+proved the server was correct all along. **Do not test Sinhala endpoints from PowerShell.**
+
 ---
 
 ### Day 4 — "Hey JARVIS" — hands-free

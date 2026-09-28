@@ -24,10 +24,66 @@ def period(hour):
     return 'රෑ'             # night
 
 
+# Sinhala number words. Written out because a voice reads "2.34" as a decimal --
+# "two point three four" -- not as a time. Times have to be words.
+UNITS = {
+    1: 'එක', 2: 'දෙක', 3: 'තුන', 4: 'හතර', 5: 'පහ', 6: 'හය', 7: 'හත', 8: 'අට',
+    9: 'නමය', 10: 'දහය', 11: 'එකොළහ', 12: 'දොළහ', 13: 'දහතුන', 14: 'දාහතර',
+    15: 'පහළොව', 16: 'දහසය', 17: 'දාහත', 18: 'දහඅට', 19: 'දහනමය',
+}
+TENS = {20: 'විස්ස', 30: 'තිහ', 40: 'හතළිහ', 50: 'පනහ',
+        60: 'හැට', 70: 'හැත්තෑව', 80: 'අසූව', 90: 'අනූව'}
+TENS_PREFIX = {20: 'විසි', 30: 'තිස්', 40: 'හතළිස්', 50: 'පනස්',
+               60: 'හැට', 70: 'හැත්තෑ', 80: 'අසූ', 90: 'අනූ'}
+
+
+def number_word(value):
+    """Sinhala word for 0 to 100.
+
+    Covers percentages and counts as well as clock times, because a voice reads every
+    digit it is given: "සියයට 100" comes out as a numeral, not as සියයක්.
+    """
+    try:
+        value = int(round(float(value)))
+    except (TypeError, ValueError):
+        return str(value)
+    if value == 0:
+        return 'බින්දුව'
+    if value == 100:
+        return 'සියය'
+    if value in UNITS:
+        return UNITS[value]
+    if value in TENS:
+        return TENS[value]
+    ten, unit = divmod(value, 10)
+    if ten * 10 in TENS_PREFIX and unit:
+        return TENS_PREFIX[ten * 10] + UNITS[unit]
+    return str(value)
+
+
+def percent(value):
+    """'සියයට අසූදෙක', never 'සියයට 82'."""
+    return f'සියයට {number_word(value)}'
+
+
 def clock(moment=None):
+    """Spoken Sinhala time: 'හවස දෙකයි තිස්හතරයි', never 'හවස 2.34'.
+
+    A voice reads digits as digits. The quarter and half forms are used because that is
+    how the time is actually said out loud.
+    """
     moment = moment or dt.datetime.now()
     hour = moment.hour % 12 or 12
-    return f'{period(moment.hour)} {hour}.{moment.minute:02d}'
+    minute = moment.minute
+    when = period(moment.hour)
+    hour_word = number_word(hour)
+    if minute == 0:
+        return f'{when} {hour_word}යි'
+    if minute == 30:
+        return f'{when} {hour_word}හමාරයි'
+    if minute == 15:
+        return f'{when} {hour_word}යි කාලයි'
+    return f'{when} {hour_word}යි {number_word(minute)}යි'
 
 
 def say_time(_tools=None, _result=None):
@@ -38,18 +94,20 @@ def say_battery(result):
     level = result.get('battery')
     if level is None:
         return 'මේ පරිගණකයේ බැටරියක් නැහැ.'
+    if level >= 99:
+        return 'බැටරිය ෆුල්.'                      # "සියයට සියයයි" is clumsy aloud
     if level <= 20:
-        return f'බැටරිය සියයට {level}යි. චාජ් කරන්න ඕනේ.'
-    return f'බැටරිය සියයට {level}යි.'
+        return f'බැටරිය {percent(level)}යි. චාජ් කරන්න ඕනේ.'
+    return f'බැටරිය {percent(level)}යි.'
 
 
 def say_system(result):
-    parts = [f"සීපීයූ සියයට {round(result['cpu'])}",
-             f"මතකය සියයට {round(result['memory'])}",
-             f"තැටිය සියයට {round(result['disk'])}"]
+    parts = [f"සීපීයූ {percent(result['cpu'])}",
+             f"මතකය {percent(result['memory'])}",
+             f"තැටිය {percent(result['disk'])}"]
     line = 'සිස්ටම් එක හොඳින්. ' + ', '.join(parts) + 'යි.'
     if result.get('battery') is not None:
-        line += f" බැටරිය සියයට {result['battery']}යි."
+        line += f" බැටරිය {percent(result['battery'])}යි."
     return line
 
 
@@ -60,8 +118,8 @@ def say_notes(records):
     if len(notes) == 1:
         return f'ඔබට සටහනක් තියෙනවා. {notes[0]["title"]}.'
     listed = '. '.join(note['title'] for note in notes[:5])
-    more = f' තව {len(notes) - 5}ක් තියෙනවා.' if len(notes) > 5 else ''
-    return f'ඔබට සටහන් {len(notes)}ක් තියෙනවා. {listed}.{more}'
+    more = f' තව {number_word(len(notes) - 5)}ක් තියෙනවා.' if len(notes) > 5 else ''
+    return f'ඔබට සටහන් {number_word(len(notes))}ක් තියෙනවා. {listed}.{more}'
 
 
 def say_reminders(records):
@@ -74,11 +132,12 @@ def say_reminders(records):
 
 def say_reminder_set(title, seconds):
     minutes = round(seconds / 60)
-    when = (f'තත්පර {seconds}කින්' if seconds < 60 else
-            f'මිනිත්තු {minutes}කින්' if seconds < 3600 else
-            f'පැය {round(seconds / 3600)}කින්')
-    at = (dt.datetime.now() + dt.timedelta(seconds=seconds))
-    return f'හරි. {when}, {clock(at)}ට මතක් කරන්නම්.' + (f' {title}.' if title else '')
+    when = (f'තත්පර {number_word(seconds)}කින්' if seconds < 60 else
+            f'මිනිත්තු {number_word(minutes)}කින්' if seconds < 3600 else
+            f'පැය {number_word(round(seconds / 3600))}කින්')
+    # The clock time is deliberately left out. Appending the dative 'ට' to a time ending
+    # in 'යි' gives "පනස්හතරයිට", which is not Sinhala. The delay alone is how it is said.
+    return f'හරි. {when} මතක් කරන්නම්.' + (f' {title}.' if title else '')
 
 
 def say_note_saved(title):

@@ -57,17 +57,56 @@ class SpeakabilityTests(unittest.TestCase):
             with self.subTest(reply=reply[:40]):
                 self.assertLess(len(reply), 220, 'too long to listen to')
 
+    def test_no_digits_anywhere_in_a_spoken_reply(self):
+        """A voice reads digits as digits.
+
+        "හවස 2.34" was spoken as "two point three four", a decimal number rather than a
+        time, and "සියයට 100" as a numeral. Every number a reply contains has to be a
+        Sinhala word before it reaches the voice.
+        """
+        for reply in self.all_replies():
+            with self.subTest(reply=reply[:40]):
+                digits = [c for c in reply if c.isdigit()]
+                self.assertEqual(digits, [], f'{digits} would be read as numerals')
+
     def test_replies_are_in_sinhala(self):
         for reply in self.all_replies():
             with self.subTest(reply=reply[:40]):
                 self.assertGreater(sinhala_ratio(reply), .5, 'not mostly Sinhala')
 
 
+class NumberWordTests(unittest.TestCase):
+    def test_units_tens_and_compounds(self):
+        cases = {1: 'එක', 9: 'නමය', 12: 'දොළහ', 15: 'පහළොව', 20: 'විස්ස',
+                 25: 'විසිපහ', 30: 'තිහ', 34: 'තිස්හතර', 45: 'හතළිස්පහ',
+                 62: 'හැටදෙක', 79: 'හැත්තෑනමය', 82: 'අසූදෙක', 100: 'සියය'}
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(responses.number_word(value), expected)
+
+    def test_floats_are_rounded_not_spelled_out(self):
+        self.assertEqual(responses.number_word(45.4), 'හතළිස්පහ')
+        self.assertEqual(responses.number_word(78.9), 'හැත්තෑනමය')
+
+    def test_percent_has_no_digits(self):
+        for value in (0, 7, 50, 82, 99, 100):
+            with self.subTest(value=value):
+                self.assertFalse(any(c.isdigit() for c in responses.percent(value)))
+
+
 class TimeTests(unittest.TestCase):
-    def test_afternoon_is_not_a_24_hour_clock(self):
-        """The observed failure: "පස්වරු 14:32"."""
-        self.assertEqual(responses.clock(dt.datetime(2026, 9, 28, 14, 32)), 'හවස 2.32')
-        self.assertNotIn('14', responses.clock(dt.datetime(2026, 9, 28, 14, 32)))
+    def test_time_is_words_not_digits(self):
+        """Observed: "හවස 2.34" spoken as a decimal, and "පස්වරු 14:32"."""
+        spoken = responses.clock(dt.datetime(2026, 9, 28, 14, 34))
+        self.assertEqual(spoken, 'හවස දෙකයි තිස්හතරයි')
+        self.assertFalse(any(c.isdigit() for c in spoken))
+
+    def test_half_and_quarter_use_the_spoken_forms(self):
+        self.assertEqual(responses.clock(dt.datetime(2026, 9, 28, 9, 30)), 'උදේ නමයහමාරයි')
+        self.assertEqual(responses.clock(dt.datetime(2026, 9, 28, 14, 15)), 'හවස දෙකයි කාලයි')
+
+    def test_on_the_hour_says_only_the_hour(self):
+        self.assertEqual(responses.clock(dt.datetime(2026, 9, 28, 12, 0)), 'දවල් දොළහයි')
 
     def test_each_part_of_the_day(self):
         cases = [(3, 'අලුයම'), (9, 'උදේ'), (13, 'දවල්'), (16, 'හවස'), (21, 'රෑ')]
@@ -76,8 +115,9 @@ class TimeTests(unittest.TestCase):
                 self.assertTrue(responses.clock(dt.datetime(2026, 9, 28, hour, 5)).startswith(expected))
 
     def test_midnight_and_noon_read_as_twelve(self):
-        self.assertIn('12', responses.clock(dt.datetime(2026, 9, 28, 0, 5)))
-        self.assertIn('12', responses.clock(dt.datetime(2026, 9, 28, 12, 5)))
+        for hour in (0, 12):
+            with self.subTest(hour=hour):
+                self.assertIn('දොළහ', responses.clock(dt.datetime(2026, 9, 28, hour, 5)))
 
 
 class DataTests(unittest.TestCase):
@@ -92,7 +132,7 @@ class DataTests(unittest.TestCase):
 
     def test_battery_reports_the_number_it_was_given(self):
         """The model claimed no battery reading existed when one did."""
-        self.assertIn('82', responses.say_battery({'battery': 82}))
+        self.assertIn('අසූදෙක', responses.say_battery({'battery': 82}))
         self.assertIn('නැහැ', responses.say_battery({'battery': None}))
 
     def test_low_battery_says_so(self):
@@ -102,15 +142,15 @@ class DataTests(unittest.TestCase):
     def test_system_status_uses_the_real_figures(self):
         reply = responses.say_system({'cpu': 45.4, 'memory': 62.1, 'disk': 78.9,
                                       'battery': 82, 'memory_gb': 15.6})
-        for number in ('45', '62', '79', '82'):
-            self.assertIn(number, reply)
+        for word in ('හතළිස්පහ', 'හැටදෙක', 'හැත්තෑනමය', 'අසූදෙක'):
+            self.assertIn(word, reply)
 
     def test_notes_counts_match(self):
         self.assertIn('නැහැ', responses.say_notes([]))
         one = [{'kind': 'note', 'title': 'කිරි ගන්න', 'done': 0}]
         self.assertIn('කිරි ගන්න', responses.say_notes(one))
         many = [{'kind': 'note', 'title': f'n{i}', 'done': 0} for i in range(7)]
-        self.assertIn('7', responses.say_notes(many))
+        self.assertIn('හත', responses.say_notes(many))
 
     def test_completed_notes_are_not_read_out(self):
         records = [{'kind': 'note', 'title': 'done one', 'done': 1},
@@ -118,10 +158,14 @@ class DataTests(unittest.TestCase):
         reply = responses.say_notes(records)
         self.assertNotIn('done one', reply)
 
-    def test_reminder_says_both_the_delay_and_the_clock_time(self):
-        reply = responses.say_reminder_set('', 600)
-        self.assertIn('10', reply)
-        self.assertRegex(reply, r'\d+\.\d\d')
+    def test_reminder_says_the_delay_in_words(self):
+        self.assertIn('දහය', responses.say_reminder_set('', 600))
+        self.assertIn('දෙක', responses.say_reminder_set('', 7200))
+        self.assertFalse(any(c.isdigit() for c in responses.say_reminder_set('', 600)))
+
+    def test_full_battery_avoids_the_clumsy_hundred_percent(self):
+        """"සියයට සියයයි" is awkward aloud."""
+        self.assertNotIn('සියයට', responses.say_battery({'battery': 100}))
 
     def test_unknown_command_is_not_answered_directly(self):
         self.assertIsNone(responses.answer('weather', self.tools, self.store))

@@ -189,6 +189,24 @@ def deep_fallback():
 
 # ---------------------------------------------------------------- day 2, the ears
 
+@check('day 2', 'Google Sinhala recogniser reachable')
+def google_stt():
+    import voice_loop
+    ears = voice_loop.Hearing('auto')
+    if ears.google is None:
+        return WARN, 'unavailable; Whisper will be used, at lower Sinhala accuracy'
+    clips = sorted((ROOT / 'data' / 'voice' / 'clips').glob('*.wav'))
+    if not clips:
+        return PASS, 'available, no clips to test against'
+    text, seconds, _ = ears.google.transcribe(voice_loop.load_wav(clips[0]))
+    sinhala = sum(1 for c in text if '඀' <= c <= '෿')
+    if sinhala < 5:
+        return FAIL, f'returned no Sinhala: {text[:60]!r}'
+    if ears.whisper is not None:
+        return WARN, 'Whisper was loaded although Google answered'
+    return PASS, f'{seconds:.2f}s -> {text[:40]}'
+
+
 @check('day 2', 'Whisper loads on the GPU')
 def whisper_loads():
     import voice_loop
@@ -320,6 +338,85 @@ def tts_offline():
     return PASS, f"fell back via {result.get('fallback')}, text preserved"
 
 
+# ---------------------------------------------------------------- day 5, the router
+
+@check('day 5', 'Commands route from real recordings')
+def routing():
+    import json
+    from router import route
+    truth = ['time', 'weather', 'system_status', 'send_message', 'send_message',
+             'reminder', 'reminder', 'play_music', 'volume_up', 'open_app',
+             'dollar_rate', 'save_note', 'list_notes', 'calculate', 'screenshot',
+             'battery', 'news', 'email', 'lock_pc', 'capabilities']
+    path = ROOT / 'data' / 'voice' / 'google.json'
+    if not path.exists():
+        return WARN, 'no google.json to route against'
+    rows = json.loads(path.read_text(encoding='utf-8'))
+    direct = wrong = 0
+    for row in rows:
+        if row['n'] > len(truth):
+            continue
+        outcome = route(row['text'])
+        if outcome['action'] != 'command':
+            continue
+        if outcome.get('command') == truth[row['n'] - 1]:
+            direct += 1
+        else:
+            wrong += 1
+    if wrong:
+        return FAIL, f'{direct} direct but {wrong} routed to the WRONG command'
+    return PASS, f'{direct}/{len(rows)} acted on directly, 0 wrong'
+
+
+@check('day 5', 'Noise and self-speech never act')
+def routing_safety():
+    from router import route
+    for noise in ('hana', 'Thank you.', 'වවවවවවවව', 'ven ven ven', '',
+                  'Tell me who the message should go to and what you would like it to say.'):
+        outcome = route(noise)
+        if outcome['action'] == 'command':
+            return FAIL, f'{noise[:30]!r} would run {outcome.get("command")}'
+    return PASS, 'all refused'
+
+
+@check('day 5', 'Notes and reminders are really saved')
+def saving():
+    import tempfile
+    from assistant_core import Store, Tools
+    from router import route
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        store = Store(root / 'v.db')
+        tools = Tools(store, root / 'workspace')
+        decision = route('සටහනක් තබන්න අද රෑට කෑම තියන්න එපා කියලා')
+        if decision['action'] != 'command' or decision['command'] != 'save_note':
+            return FAIL, f'routed to {decision["action"]}/{decision.get("command")}'
+        tools.execute('save_note', {'title': decision['content'], 'content': ''})
+        notes = [r for r in store.records() if r['kind'] == 'note']
+        if not notes:
+            return FAIL, 'the note was not stored'
+        if 'කෑම' not in notes[0]['title']:
+            return FAIL, f'stored the wrong text: {notes[0]["title"][:40]}'
+        return PASS, f'stored: {notes[0]["title"][:34]}'
+
+
+@check('day 5', 'Spoken replies contain no digits')
+def spoken_numbers():
+    import tempfile
+    import responses
+    from assistant_core import Store, Tools
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        store = Store(root / 'v.db')
+        tools = Tools(store, root / 'workspace')
+        replies = [responses.answer(name, tools, store) for name in responses.DIRECT]
+        replies.append(responses.say_reminder_set('කිරි ගන්න', 600))
+        for reply in replies:
+            if reply and any(c.isdigit() for c in reply):
+                return FAIL, f'digits would be read as numerals: {reply[:50]}'
+    return PASS, 'every number is a Sinhala word'
+
+
 # ---------------------------------------------------------------- the server
 
 @check('setup', 'Server boots with every endpoint')
@@ -349,10 +446,41 @@ def server_endpoints():
         server.server_close()
 
 
+@check('day 4', 'Wake word model loads')
+def wake_word():
+    import numpy
+    import voice_loop
+    wake = voice_loop.WakeWord()
+    fired = wake.feed(numpy.zeros(voice_loop.WAKE_FRAME, dtype='float32'))
+    if fired:
+        return FAIL, 'fired on silence'
+    threshold = voice_loop.WAKE_THRESHOLD
+    if not .48 < threshold < .86:
+        return FAIL, f'threshold {threshold} is outside the measured gap'
+    return PASS, f'{wake.name} loaded, threshold {threshold}'
+
+
+@check('day 4', 'Own voice is ignored')
+def echo_guard():
+    from unittest.mock import MagicMock, patch
+    import voice_loop
+    with patch('openwakeword.model.Model') as model:
+        model.return_value.predict.return_value = {'hey_jarvis': 0.0}
+        listener = voice_loop.Listener(vad=MagicMock(), ears=MagicMock())
+    listener.last_reply = "Tell me who the message should be sent to and what content you'd like."
+    if not listener.is_own_voice('Tell me who the message should be sent to and what content'):
+        return FAIL, 'would answer its own reply'
+    if listener.is_own_voice('ammata message ekak yavanna'):
+        return FAIL, 'a real command was mistaken for the reply'
+    return PASS, 'self-speech filtered, commands pass'
+
+
 ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
-         whisper_loads, vad_check, transcribe_clips, command_accuracy, noise_rejected,
-         tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline]
+         google_stt, whisper_loads, vad_check, transcribe_clips, command_accuracy,
+         noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
+         wake_word, echo_guard,
+         routing, routing_safety, saving, spoken_numbers]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

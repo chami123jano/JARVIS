@@ -118,3 +118,53 @@ class AssistantTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ConcurrencyTests(unittest.TestCase):
+    """The console must stay responsive while Ollama is busy.
+
+    /api/state used to refresh the model list while holding a lock, so a slow reply from
+    Ollama blocked every other caller behind it. Under load the endpoint exceeded its own
+    timeout and the connection was dropped.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    @staticmethod
+    def fetch(url, timeout=10):
+        """urllib, not requests: the test patches requests.get on the server side."""
+        import urllib.request
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            return json.loads(response.read())
+
+    def test_state_stays_fast_while_ollama_is_slow(self):
+        release = threading.Event()
+
+        def crawling_get(*_args, **_kwargs):
+            release.wait(3)
+            raise requests.ConnectionError('slow')
+
+        server = create_server(0, self.root / 'server-data')
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        url = f'http://127.0.0.1:{server.server_port}/api/state'
+        try:
+            with patch('server.requests.get', side_effect=crawling_get):
+                # One caller is stuck refreshing the model list.
+                threading.Thread(target=lambda: self.fetch(url), daemon=True).start()
+                time.sleep(.4)
+                started = time.monotonic()
+                state = self.fetch(url)
+                elapsed = time.monotonic() - started
+            release.set()
+            self.assertIn('token', state)
+            self.assertLess(elapsed, 1.5,
+                            f'second caller waited {elapsed:.2f}s behind the refresh')
+        finally:
+            release.set()
+            server.shutdown()
+            server.server_close()

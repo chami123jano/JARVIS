@@ -97,16 +97,33 @@ def create_server(port=4190, data_dir=None):
             voice['lock'].release()
 
     def models():
+        """Installed models, cached.
+
+        The refresh happens outside the lock. Holding it across a two second request to
+        Ollama made every concurrent caller wait behind the slowest one, so while Ollama
+        was busy loading a model the whole console stalled and /api/state could exceed
+        its own timeout. One caller refreshes; the rest are served the previous answer.
+        """
         with model_lock:
-            if time.monotonic() - model_cache['at'] > 8:
-                try:
-                    response = requests.get(agent.endpoint + '/api/tags', timeout=2)
-                    response.raise_for_status()
-                    model_cache.update(online=True, models=[m['name'] for m in response.json()['models']])
-                except (requests.RequestException, ValueError, KeyError):
-                    model_cache.update(online=False, models=[])
-                model_cache['at'] = time.monotonic()
-            return {key: value for key, value in model_cache.items() if key != 'at'}
+            fresh = time.monotonic() - model_cache['at'] <= 8
+            if fresh or model_cache.get('refreshing'):
+                return {key: value for key, value in model_cache.items()
+                        if key not in ('at', 'refreshing')}
+            model_cache['refreshing'] = True
+
+        online, names = False, []
+        try:
+            response = requests.get(agent.endpoint + '/api/tags', timeout=2)
+            response.raise_for_status()
+            online, names = True, [m['name'] for m in response.json()['models']]
+        except (requests.RequestException, ValueError, KeyError):
+            pass
+
+        with model_lock:
+            model_cache.update(online=online, models=names,
+                               at=time.monotonic(), refreshing=False)
+            return {key: value for key, value in model_cache.items()
+                    if key not in ('at', 'refreshing')}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):

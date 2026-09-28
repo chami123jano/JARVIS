@@ -404,6 +404,24 @@ class Listener:
                                        blocksize=512, device=self.device,
                                        callback=callback), blocks
 
+    def flush(self, blocks):
+        """Throw away audio captured while JARVIS was talking or beeping.
+
+        The input stream keeps filling during playback, so without this the next read
+        returns JARVIS's own voice and transcribes it as a new command. That is the
+        feedback loop, and there is no echo cancellation to rescue us from it.
+        """
+        import numpy
+        dropped = 0
+        while True:
+            try:
+                dropped += len(blocks.get_nowait())
+            except queue.Empty:
+                break
+        self.buffer = numpy.zeros(0, dtype='float32')
+        self.vad.reset()
+        return dropped
+
     def take(self, blocks, size):
         """Pull exactly `size` samples from the rolling buffer, refilling as needed."""
         import numpy
@@ -450,6 +468,8 @@ class Listener:
         """One command: record, transcribe, act, speak."""
         if prompt_beep:
             beep()
+        # Discard the beep and anything else already buffered, so recording starts clean.
+        self.flush(blocks)
         self.set_state('listening')
         audio = self.record_command(blocks)
         if audio is None:
@@ -472,11 +492,30 @@ class Listener:
             on_command(text)
         except Exception as error:
             print(f'  command failed: {error}', file=sys.stderr)
+        # on_command speaks the reply, which the microphone hears. Drop all of it before
+        # the follow-up window opens, or JARVIS answers itself.
+        dropped = self.flush(blocks)
+        if dropped:
+            print(f'  (discarded {dropped/SAMPLE_RATE:.1f}s of own audio)', flush=True)
         self.set_state('idle')
         return True
 
+    def busy_speaking(self):
+        """Is JARVIS talking right now?"""
+        try:
+            import speech
+            return speech.SPEAKER.speaking
+        except Exception:
+            return False
+
     def run(self, on_command, on_barge_in=None):
-        """Listen until stopped. on_command(text) does the work and may speak."""
+        """Listen until stopped. on_command(text) does the work and may speak.
+
+        on_barge_in enables listening during playback so the wake word can cut JARVIS
+        off. It is off by default because without echo cancellation the microphone hears
+        the speakers, and a loop that answers its own voice is worse than one you have
+        to wait for.
+        """
         self.running.set()
         stream, blocks = self.stream()
         print(f'Listening for "{self.wake.name.replace("_", " ")}". Ctrl+C to stop.', flush=True)
@@ -487,6 +526,9 @@ class Listener:
                 if frame is None:
                     continue
                 if self.muted.is_set():
+                    continue
+                if self.busy_speaking() and not on_barge_in:
+                    # Half duplex: ignore everything while talking, then start clean.
                     continue
 
                 # Follow-up window: a question straight after a reply needs no wake word.
@@ -793,8 +835,9 @@ def command_prompt(decision):
             'Reply in Sinhala if that looks like Sinhala.)')
 
 
-def wake_loop(args):
-    """Always-listening JARVIS: wake word, Sinhala command, spoken Sinhala reply."""
+def build_brain(args):
+    """Shared setup for the talk and wake loops: agent, router, speech."""
+    import router as command_router
     import speech
     from agent import Agent
     from assistant_core import ROOT as CORE_ROOT, Store, Tools
@@ -803,50 +846,93 @@ def wake_loop(args):
     tools = Tools(store, store.config('workspace', str(CORE_ROOT / 'workspace')))
     agent = Agent(store, tools)
     if not store.config('model', ''):
-        print('No model configured. Choose one in Settings first.', file=sys.stderr)
-        return 1
+        raise SystemExit('No model configured. Choose one in Settings first.')
 
+    def respond(text, speak=True, on_state=None):
+        """Route, act, and say the answer. Returns the reply text."""
+        decision = command_router.route(text)
+        print(f'  router: {decision["action"]} {decision.get("command")} '
+              f'({decision.get("score")})', flush=True)
+        if decision['action'] == 'unclear':
+            reply = 'මට තේරුණේ නැහැ. ආයෙත් කියන්න.'      # I didn't catch that, say again
+        else:
+            prompt = command_prompt(decision) if decision['action'] == 'command' else text
+            job_id = agent.start(prompt)
+            for _ in range(1200):
+                job = agent.snapshot(job_id)
+                if job['state'] not in ('running', 'stopping'):
+                    break
+                time.sleep(.25)
+            else:
+                agent.stop(job_id)
+                job = agent.snapshot(job_id)
+            reply = job['answer']
+        print(f'  JARVIS: {reply[:160]}', flush=True)
+        if speak:
+            if on_state:
+                on_state('speaking')
+            speech.SPEAKER.say(reply)
+        return reply
+
+    return respond, speech
+
+
+def talk_loop(args):
+    """Push to talk: press Enter, speak, press Enter, hear the answer.
+
+    No wake word and no speech detection, so JARVIS cannot hear itself and cannot mistime
+    the end of a sentence. The most reliable way to use it, and the right fallback
+    whenever the always-listening loop misbehaves.
+    """
+    respond, _ = build_brain(args)
+    ears = Ears(args.model, args.whisper_device)
+    language = None if args.lang == 'auto' else args.lang
+
+    print('\nPush to talk. Enter to start, Enter again to stop. Ctrl+C to quit.\n')
+    try:
+        while True:
+            input('> Press Enter to talk... ')
+            audio = record_push(args.device)
+            if audio is None:
+                print('  (nothing recorded)\n')
+                continue
+            text, elapsed, info = ears.transcribe(audio, language)
+            detected = getattr(info, 'language', '?')
+            print(f'  heard [{len(audio)/SAMPLE_RATE:.1f}s, {elapsed:.2f}s, {detected}]: {text}')
+            try:
+                from sinhala import normalize
+                print(f'  phonetic: {normalize(text)}')
+            except Exception:
+                pass
+            if not text.strip():
+                print('  (nothing recognised)\n')
+                continue
+            respond(text, speak=not args.silent)
+            print()
+    except KeyboardInterrupt:
+        print('\nStopped.')
+    return 0
+
+
+def wake_loop(args):
+    """Always-listening JARVIS: wake word, Sinhala command, spoken Sinhala reply."""
+    respond, speech = build_brain(args)
     vad = Vad()
     ears = Ears(args.model, args.whisper_device)
     listener = Listener(vad, ears, args.device, args.wake_threshold,
                         None if args.lang == 'auto' else args.lang)
 
-    import router as command_router
-
     def on_command(text):
-        # Match phonetically first. Whisper writes Sinhala in Tamil or Latin script, so
-        # the raw transcript looks like gibberish to the model even when the sounds are
-        # right. A matched command skips the model entirely and answers in about a second.
-        decision = command_router.route(text)
-        print(f'  router: {decision["action"]} {decision.get("command")} '
-              f'({decision.get("score")})', flush=True)
-        if decision['action'] == 'unclear':
-            reply = 'මට තේරුණේ නැහැ. ආයෙත් කියන්න.'      # I did not understand, say again
-            print(f'  JARVIS: {reply}', flush=True)
-            if not args.silent:
-                speech.SPEAKER.say(reply)
-            return
-        prompt = text
-        if decision['action'] == 'command':
-            prompt = command_prompt(decision)
-        job_id = agent.start(prompt)
-        for _ in range(1200):
-            job = agent.snapshot(job_id)
-            if job['state'] not in ('running', 'stopping'):
-                break
-            time.sleep(.25)
-        else:
-            agent.stop(job_id)
-            job = agent.snapshot(job_id)
-        answer = job['answer']
-        print(f'  JARVIS: {answer[:160]}', flush=True)
-        if not args.silent:
-            listener.set_state('speaking')
-            speech.SPEAKER.say(answer)
+        respond(text, speak=not args.silent, on_state=listener.set_state)
 
     listener.on_state = lambda state: print(f'  [{state}]', flush=True) if args.verbose else None
+    # Barge-in means listening while the speakers are playing, which without echo
+    # cancellation means hearing ourselves. Opt in only.
+    barge_in = speech.SPEAKER.stop if args.barge_in else None
+    if not barge_in:
+        print('(half duplex: not listening while speaking. --barge-in to change)')
     try:
-        listener.run(on_command, on_barge_in=speech.SPEAKER.stop)
+        listener.run(on_command, on_barge_in=barge_in)
     except KeyboardInterrupt:
         print('\nStopped.')
     return 0
@@ -863,8 +949,13 @@ def main():
                         help='push to talk: Enter to start, Enter to stop, no speech detection')
     parser.add_argument('--devices', action='store_true', help='list input devices')
     parser.add_argument('--check', action='store_true', help='verify the stack without recording')
+    parser.add_argument('--talk', action='store_true',
+                        help='push to talk conversation: Enter, speak, Enter, hear the answer')
     parser.add_argument('--wake', action='store_true',
                         help='always listening: wake on "hey jarvis", then act and speak')
+    parser.add_argument('--barge-in', action='store_true',
+                        help='keep listening while speaking so the wake word interrupts; '
+                             'without echo cancellation this can hear itself')
     parser.add_argument('--wake-threshold', type=float, default=WAKE_THRESHOLD,
                         help=f'wake word sensitivity, lower is easier (default {WAKE_THRESHOLD})')
     parser.add_argument('--wake-test', nargs='?', type=int, const=30, metavar='SECONDS',
@@ -892,6 +983,9 @@ def main():
 
     if args.wake_test:
         return wake_test(args.device, args.wake_threshold, args.wake_test)
+
+    if args.talk:
+        return talk_loop(args)
 
     if args.wake:
         return wake_loop(args)

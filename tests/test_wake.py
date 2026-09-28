@@ -253,3 +253,52 @@ class MuteTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class EchoTests(unittest.TestCase):
+    """JARVIS must not hear itself.
+
+    The input stream keeps filling while the speakers play, so audio captured during a
+    reply is still queued when the follow-up window opens. Without flushing it, the next
+    "command" is JARVIS's own voice, and the loop answers itself.
+    """
+
+    def make_listener(self):
+        import numpy
+        import voice_loop
+        listener = voice_loop.Listener.__new__(voice_loop.Listener)
+        listener.buffer = numpy.zeros(0, dtype='float32')
+        listener.vad = MagicMock()
+        return listener, voice_loop
+
+    def test_flush_discards_queued_audio(self):
+        import queue
+        import numpy
+        listener, voice_loop = self.make_listener()
+        blocks = queue.Queue()
+        for _ in range(12):
+            blocks.put(numpy.ones(512, dtype='float32'))
+        listener.buffer = numpy.ones(300, dtype='float32')
+        dropped = listener.flush(blocks)
+        self.assertEqual(dropped, 12 * 512)
+        self.assertEqual(len(listener.buffer), 0)
+        self.assertTrue(blocks.empty())
+        listener.vad.reset.assert_called_once()
+
+    def test_flush_is_safe_when_nothing_is_queued(self):
+        import queue
+        listener, _ = self.make_listener()
+        self.assertEqual(listener.flush(queue.Queue()), 0)
+
+    def test_take_after_flush_reads_only_new_audio(self):
+        import queue
+        import numpy
+        listener, voice_loop = self.make_listener()
+        blocks = queue.Queue()
+        for _ in range(6):
+            blocks.put(numpy.full(512, 9.0, dtype='float32'))   # JARVIS speaking
+        listener.flush(blocks)
+        for _ in range(3):
+            blocks.put(numpy.full(512, 1.0, dtype='float32'))   # the user, afterwards
+        chunk = listener.take(blocks, voice_loop.FRAME)
+        self.assertTrue(numpy.all(chunk == 1.0), 'old audio leaked past the flush')

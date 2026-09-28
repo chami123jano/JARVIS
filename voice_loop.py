@@ -258,6 +258,207 @@ def record_utterance(vad, device=None, timeout=20):
     return numpy.concatenate(collected)
 
 
+WAKE_MODEL = 'hey_jarvis'
+WAKE_FRAME = 1280               # 80 ms at 16 kHz, what openWakeWord expects
+WAKE_THRESHOLD = .5
+WAKE_COOLDOWN = 1.5             # seconds before the same word can fire again
+FOLLOW_UP_SECONDS = 8           # after a reply, listen again without the wake word
+
+
+class WakeWord:
+    """openWakeWord's pretrained 'hey jarvis', over onnxruntime.
+
+    The tflite backend it defaults to has no Windows wheel, so the framework has to be
+    named explicitly or loading fails with an unhelpful import error.
+    """
+
+    def __init__(self, name=WAKE_MODEL, threshold=WAKE_THRESHOLD):
+        from openwakeword.model import Model
+        try:
+            self.model = Model(wakeword_models=[name], inference_framework='onnx')
+        except Exception:
+            import openwakeword
+            openwakeword.utils.download_models()
+            self.model = Model(wakeword_models=[name], inference_framework='onnx')
+        self.name = name
+        self.threshold = threshold
+        self.last_fired = 0.0
+        self.peak = 0.0
+
+    def feed(self, frame):
+        """frame: 1280 float32 samples. True when the wake word just fired."""
+        import numpy
+        samples = (numpy.clip(frame, -1, 1) * 32767).astype('int16')
+        scores = self.model.predict(samples)
+        score = float(max(scores.values()))
+        self.peak = max(self.peak, score)
+        if score < self.threshold:
+            return False
+        now = time.monotonic()
+        if now - self.last_fired < WAKE_COOLDOWN:
+            return False
+        self.last_fired = now
+        self.model.reset()
+        return True
+
+
+def beep(frequency=880, seconds=.12, volume=.25):
+    """Short acknowledging tone, so you know it heard its name."""
+    try:
+        import numpy
+        import sounddevice
+        t = numpy.linspace(0, seconds, int(SAMPLE_RATE * seconds), endpoint=False)
+        tone = (numpy.sin(2 * numpy.pi * frequency * t) * volume).astype('float32')
+        fade = int(len(tone) * .15)
+        tone[:fade] *= numpy.linspace(0, 1, fade)
+        tone[-fade:] *= numpy.linspace(1, 0, fade)
+        sounddevice.play(tone, SAMPLE_RATE, blocking=True)
+    except Exception:
+        pass
+
+
+class Listener:
+    """Always-on loop: wake word, then command, then answer, then follow-up.
+
+    One audio stream serves both the wake word and the recorder. Opening a fresh stream
+    per utterance costs hundreds of milliseconds and sometimes fails outright while the
+    device is still releasing, which is long enough to clip the first word.
+    """
+
+    def __init__(self, vad, ears, device=None, threshold=WAKE_THRESHOLD, language=None):
+        self.vad, self.ears, self.device = vad, ears, device
+        self.language = language
+        self.wake = WakeWord(threshold=threshold)
+        self.muted = threading.Event()
+        self.running = threading.Event()
+        self.state = 'idle'
+        self.on_state = None
+        self.buffer = None
+
+    def set_state(self, state):
+        self.state = state
+        if self.on_state:
+            try:
+                self.on_state(state)
+            except Exception:
+                pass
+
+    def stream(self):
+        import numpy
+        import sounddevice
+        self.buffer = numpy.zeros(0, dtype='float32')
+        blocks = queue.Queue()
+
+        def callback(indata, _frames, _time, status):
+            if status:
+                print(f'audio: {status}', file=sys.stderr)
+            blocks.put(indata[:, 0].copy())
+
+        return sounddevice.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='float32',
+                                       blocksize=512, device=self.device,
+                                       callback=callback), blocks
+
+    def take(self, blocks, size):
+        """Pull exactly `size` samples from the rolling buffer, refilling as needed."""
+        import numpy
+        while len(self.buffer) < size:
+            try:
+                self.buffer = numpy.concatenate([self.buffer, blocks.get(timeout=1)])
+            except queue.Empty:
+                return None
+        chunk, self.buffer = self.buffer[:size], self.buffer[size:]
+        return chunk
+
+    def record_command(self, blocks, timeout=12):
+        """Record until the speaker stops, reusing the open stream."""
+        import numpy
+        self.vad.reset()
+        collected, speech, quiet, speaking = [], 0.0, 0.0, False
+        frame_seconds = FRAME / SAMPLE_RATE
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            frame = self.take(blocks, FRAME)
+            if frame is None:
+                break
+            probability = self.vad.probability(frame)
+            if probability >= SPEECH_ON:
+                speaking = True
+                speech += frame_seconds
+                quiet = 0.0
+                collected.append(frame)
+            elif speaking:
+                collected.append(frame)
+                if probability < SPEECH_OFF:
+                    quiet += frame_seconds
+                    if quiet >= SILENCE_END:
+                        break
+                else:
+                    quiet = 0.0
+            if speaking and speech >= MAX_UTTERANCE:
+                break
+        if speech < MIN_SPEECH or not collected:
+            return None
+        return numpy.concatenate(collected)
+
+    def handle(self, blocks, on_command, prompt_beep=True):
+        """One command: record, transcribe, act, speak."""
+        if prompt_beep:
+            beep()
+        self.set_state('listening')
+        audio = self.record_command(blocks)
+        if audio is None:
+            self.set_state('idle')
+            return False
+        self.set_state('thinking')
+        text, elapsed, info = self.ears.transcribe(audio, self.language)
+        detected = getattr(info, 'language', '?')
+        print(f'  heard [{len(audio)/SAMPLE_RATE:.1f}s, {elapsed:.2f}s, {detected}]: {text}', flush=True)
+        if not text.strip():
+            self.set_state('idle')
+            return False
+        try:
+            on_command(text)
+        except Exception as error:
+            print(f'  command failed: {error}', file=sys.stderr)
+        self.set_state('idle')
+        return True
+
+    def run(self, on_command, on_barge_in=None):
+        """Listen until stopped. on_command(text) does the work and may speak."""
+        self.running.set()
+        stream, blocks = self.stream()
+        print(f'Listening for "{self.wake.name.replace("_", " ")}". Ctrl+C to stop.', flush=True)
+        with stream:
+            follow_until = 0.0
+            while self.running.is_set():
+                frame = self.take(blocks, WAKE_FRAME)
+                if frame is None:
+                    continue
+                if self.muted.is_set():
+                    continue
+
+                # Follow-up window: a question straight after a reply needs no wake word.
+                if time.monotonic() < follow_until:
+                    speech_now = any(
+                        self.vad.probability(frame[start:start + FRAME]) >= SPEECH_ON
+                        for start in range(0, WAKE_FRAME - FRAME + 1, FRAME))
+                    if speech_now:
+                        self.buffer = None if self.buffer is None else self.buffer
+                        if self.handle(blocks, on_command, prompt_beep=False):
+                            follow_until = time.monotonic() + FOLLOW_UP_SECONDS
+                        continue
+
+                if self.wake.feed(frame):
+                    print('\n* wake word *', flush=True)
+                    if on_barge_in:
+                        on_barge_in()          # cut off whatever JARVIS is saying
+                    if self.handle(blocks, on_command):
+                        follow_until = time.monotonic() + FOLLOW_UP_SECONDS
+
+    def stop(self):
+        self.running.clear()
+
+
 def save_wav(path, audio):
     """Write 16-bit PCM so recordings can be re-tested against other models later.
 
@@ -440,6 +641,109 @@ def session(ears, vad, device, language, count, out_path, push=False):
         print(f'Average transcription time: {average:.2f}s')
 
 
+def wake_test(device=None, threshold=WAKE_THRESHOLD, seconds=30):
+    """Report wake word scores without acting, so the threshold can be set from data.
+
+    Say "hey jarvis" a few times, then stay quiet and talk normally. The gap between the
+    two sets of numbers is the threshold; guessing it produces either a wake word that
+    ignores you or one that fires at the television.
+    """
+    import numpy
+    import sounddevice
+
+    wake = WakeWord(threshold=threshold)
+    blocks = queue.Queue()
+
+    def callback(indata, _frames, _time, status):
+        blocks.put(indata[:, 0].copy())
+
+    print(f'Say "hey jarvis" a few times over the next {seconds}s, then talk normally.')
+    print(f'Current threshold: {threshold}\n')
+    buffer = numpy.zeros(0, dtype='float32')
+    hits, peaks = [], []
+    with sounddevice.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='float32',
+                                 blocksize=512, device=device, callback=callback):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            try:
+                buffer = numpy.concatenate([buffer, blocks.get(timeout=1)])
+            except queue.Empty:
+                continue
+            while len(buffer) >= WAKE_FRAME:
+                frame, buffer = buffer[:WAKE_FRAME], buffer[WAKE_FRAME:]
+                samples = (numpy.clip(frame, -1, 1) * 32767).astype('int16')
+                score = float(max(wake.model.predict(samples).values()))
+                peaks.append(score)
+                if score >= .1:
+                    bar = '#' * int(score * 40)
+                    marker = '  <-- WOULD FIRE' if score >= threshold else ''
+                    print(f'  {score:.3f} {bar}{marker}', flush=True)
+                if score >= threshold:
+                    hits.append(score)
+                    wake.model.reset()
+
+    if not peaks:
+        print('\nNo audio arrived.')
+        return 1
+    peaks.sort()
+    loud = [p for p in peaks if p >= .1]
+    print(f'\nframes analysed  {len(peaks)}')
+    print(f'would have fired {len(hits)} times at threshold {threshold}')
+    print(f'highest score    {peaks[-1]:.3f}')
+    print(f'99th percentile  {peaks[int(len(peaks) * .99)]:.3f}')
+    print(f'frames above 0.1 {len(loud)}')
+    if not hits:
+        print('\nThe wake word never fired. Lower --wake-threshold towards the highest')
+        print('score above, or say "hey JARVIS" as one phrase rather than two words.')
+    elif len(hits) > 12:
+        print('\nThat is a lot of triggers. Raise --wake-threshold to cut false alarms.')
+    else:
+        print('\nThreshold looks reasonable.')
+    return 0
+
+
+def wake_loop(args):
+    """Always-listening JARVIS: wake word, Sinhala command, spoken Sinhala reply."""
+    import speech
+    from agent import Agent
+    from assistant_core import ROOT as CORE_ROOT, Store, Tools
+
+    store = Store(CORE_ROOT / 'data' / 'jarvis.db')
+    tools = Tools(store, store.config('workspace', str(CORE_ROOT / 'workspace')))
+    agent = Agent(store, tools)
+    if not store.config('model', ''):
+        print('No model configured. Choose one in Settings first.', file=sys.stderr)
+        return 1
+
+    vad = Vad()
+    ears = Ears(args.model, args.whisper_device)
+    listener = Listener(vad, ears, args.device, args.wake_threshold,
+                        None if args.lang == 'auto' else args.lang)
+
+    def on_command(text):
+        job_id = agent.start(text)
+        for _ in range(1200):
+            job = agent.snapshot(job_id)
+            if job['state'] not in ('running', 'stopping'):
+                break
+            time.sleep(.25)
+        else:
+            agent.stop(job_id)
+            job = agent.snapshot(job_id)
+        answer = job['answer']
+        print(f'  JARVIS: {answer[:160]}', flush=True)
+        if not args.silent:
+            listener.set_state('speaking')
+            speech.SPEAKER.say(answer)
+
+    listener.on_state = lambda state: print(f'  [{state}]', flush=True) if args.verbose else None
+    try:
+        listener.run(on_command, on_barge_in=speech.SPEAKER.stop)
+    except KeyboardInterrupt:
+        print('\nStopped.')
+    return 0
+
+
 def main():
     global SPEECH_ON, SPEECH_OFF
     parser = argparse.ArgumentParser(description='JARVIS microphone and transcription loop')
@@ -451,6 +755,14 @@ def main():
                         help='push to talk: Enter to start, Enter to stop, no speech detection')
     parser.add_argument('--devices', action='store_true', help='list input devices')
     parser.add_argument('--check', action='store_true', help='verify the stack without recording')
+    parser.add_argument('--wake', action='store_true',
+                        help='always listening: wake on "hey jarvis", then act and speak')
+    parser.add_argument('--wake-threshold', type=float, default=WAKE_THRESHOLD,
+                        help=f'wake word sensitivity, lower is easier (default {WAKE_THRESHOLD})')
+    parser.add_argument('--wake-test', nargs='?', type=int, const=30, metavar='SECONDS',
+                        help='report wake word scores without acting, to tune the threshold')
+    parser.add_argument('--silent', action='store_true', help='with --wake, do not speak replies')
+    parser.add_argument('--verbose', action='store_true', help='print state changes')
     parser.add_argument('--monitor', nargs='?', type=int, const=15, metavar='SECONDS',
                         help='live microphone and speech-detection meter')
     parser.add_argument('--speech-threshold', type=float, default=None,
@@ -469,6 +781,12 @@ def main():
 
     if args.monitor:
         return monitor(Vad(), args.device, args.monitor)
+
+    if args.wake_test:
+        return wake_test(args.device, args.wake_threshold, args.wake_test)
+
+    if args.wake:
+        return wake_loop(args)
 
     if args.devices:
         import sounddevice

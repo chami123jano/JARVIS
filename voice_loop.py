@@ -16,6 +16,7 @@ import argparse
 import os
 import queue
 import sys
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -260,7 +261,12 @@ def record_utterance(vad, device=None, timeout=20):
 
 WAKE_MODEL = 'hey_jarvis'
 WAKE_FRAME = 1280               # 80 ms at 16 kHz, what openWakeWord expects
-WAKE_THRESHOLD = .5
+# Set from a real 30-second recording on this microphone, not guessed:
+#   "hey jarvis"      0.950, 0.868, 0.863
+#   everything else   0.474 at the 99th percentile
+# 0.6 sits in the gap with margin on both sides. Re-run --wake-test after changing
+# microphone or room.
+WAKE_THRESHOLD = .6
 WAKE_COOLDOWN = 1.5             # seconds before the same word can fire again
 FOLLOW_UP_SECONDS = 8           # after a reply, listen again without the wake word
 

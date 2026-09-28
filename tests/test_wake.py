@@ -31,10 +31,21 @@ class WakeWordTests(unittest.TestCase):
         self.frame = numpy.zeros(voice_loop.WAKE_FRAME, dtype='float32')
 
     def test_fires_above_threshold_only(self):
-        wake = fake_wake([0.1, 0.49, 0.51])
+        limit = self.voice_loop.WAKE_THRESHOLD
+        wake = fake_wake([limit - .4, limit - .01, limit + .01])
         self.assertFalse(wake.feed(self.frame))
         self.assertFalse(wake.feed(self.frame))
         self.assertTrue(wake.feed(self.frame))
+
+    def test_threshold_clears_the_measured_noise_floor(self):
+        """Measured on this microphone: wake words 0.86-0.95, other speech up to 0.474.
+
+        The threshold has to sit in that gap. Drifting it into either side gives a wake
+        word that ignores you or one that fires at the television.
+        """
+        limit = self.voice_loop.WAKE_THRESHOLD
+        self.assertGreater(limit, .48, 'would trigger on ordinary speech')
+        self.assertLess(limit, .86, 'would miss a real "hey jarvis"')
 
     def test_cooldown_prevents_a_double_trigger(self):
         """One spoken phrase spans many frames and would otherwise fire repeatedly."""
@@ -102,6 +113,62 @@ class BufferTests(unittest.TestCase):
         joined = numpy.concatenate(seen)
         self.assertTrue(numpy.array_equal(joined, total[:len(joined)]),
                         'samples were reordered or dropped')
+
+
+class ConstructionTests(unittest.TestCase):
+    """Actually build a Listener.
+
+    The other tests use __new__ and skip __init__, which is why a missing
+    `import threading` reached the user as a NameError at startup. Construct the real
+    object so import mistakes surface here instead.
+    """
+
+    def test_listener_constructs(self):
+        import voice_loop
+        with patch('openwakeword.model.Model') as model:
+            model.return_value.predict.return_value = {'hey_jarvis': 0.0}
+            listener = voice_loop.Listener(vad=MagicMock(), ears=MagicMock())
+        self.assertFalse(listener.muted.is_set())
+        self.assertFalse(listener.running.is_set())
+        self.assertEqual(listener.state, 'idle')
+        self.assertEqual(listener.wake.threshold, voice_loop.WAKE_THRESHOLD)
+
+    def test_module_has_every_import_it_uses(self):
+        """Catches a name used at runtime but never imported."""
+        import ast
+        import builtins
+        import voice_loop
+        source = Path(voice_loop.__file__).read_text(encoding='utf-8')
+        tree = ast.parse(source)
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update((alias.asname or alias.name).split('.')[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imported.update(alias.asname or alias.name for alias in node.names)
+        # Every name bound anywhere: assignments, loop targets, comprehensions,
+        # parameters, except-as and with-as. Without all of these the check reports
+        # ordinary local variables as missing imports.
+        bound = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                bound.add(node.id)
+            elif isinstance(node, ast.arg):
+                bound.add(node.arg)
+            elif isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                bound.add(node.name)
+            elif isinstance(node, ast.ExceptHandler) and node.name:
+                bound.add(node.name)
+            elif isinstance(node, ast.withitem) and isinstance(node.optional_vars, ast.Name):
+                bound.add(node.optional_vars.id)
+        known = imported | bound | set(dir(builtins))
+        missing = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                name = node.value.id
+                if name not in known and name not in ('self', 'cls', 'args', 'parser'):
+                    missing.add(name)
+        self.assertEqual(missing, set(), f'used but never imported: {sorted(missing)}')
 
 
 class MuteTests(unittest.TestCase):

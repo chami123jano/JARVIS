@@ -967,10 +967,63 @@ def build_brain(args):
     if not store.config('model', ''):
         raise SystemExit('No model configured. Choose one in Settings first.')
 
+    import contacts
+    import messaging
+    import permissions
     import responses
+
+    # A message waiting for a yes. Held here rather than acted on, so the next thing
+    # said is interpreted as an answer to the question just asked.
+    pending = {}
+
+    def send_pending(lang):
+        """Carry out the message that was just confirmed."""
+        person, body = pending.get('person'), pending.get('text')
+        pending.clear()
+        auto = bool(store.config('auto_send', False))
+        try:
+            result = messaging.send(person['phone'], body, auto_send=auto)
+        except messaging.SendError as error:
+            permissions.log(store, 'send_message',
+                            {'to': person['name'], 'text': body}, f'failed: {error}')
+            return (f'I could not send that. {error}' if lang == 'en'
+                    else f'යවන්න බැරි වුණා. {error}')
+        permissions.log(store, 'send_message', {'to': person['name'], 'text': body},
+                        'sent' if result.get('sent') else 'opened, awaiting your Enter')
+        if result.get('sent'):
+            called = contacts.speakable(person, lang)
+            return f'Sent to {called}.' if lang == 'en' else f'{called}ට යැව්වා.'
+        return ('It is typed in WhatsApp. Press Enter there to send it.' if lang == 'en'
+                else 'WhatsApp එකේ ටයිප් කරලා තියෙනවා. Enter ගහලා යවන්න.')
 
     def respond(text, speak=True, on_state=None):
         """Route, act, and say the answer. Returns the reply text."""
+        # An outstanding question takes precedence: the next utterance answers it.
+        if pending:
+            lang = pending.get('language', 'si')
+            if permissions.is_yes(text):
+                reply = send_pending(lang)
+                print(f'  JARVIS: {reply}', flush=True)
+                if speak:
+                    speech.SPEAKER.say(reply)
+                return reply
+            if permissions.is_no(text):
+                permissions.log(store, 'send_message',
+                                {'to': pending['person']['name'], 'text': pending['text']},
+                                'cancelled')
+                pending.clear()
+                reply = 'Cancelled.' if lang == 'en' else 'හරි, යැව්වේ නෑ.'
+                print(f'  JARVIS: {reply}', flush=True)
+                if speak:
+                    speech.SPEAKER.say(reply)
+                return reply
+            # Neither: ask once more rather than guessing at a message to a person.
+            reply = ('Yes or no?' if lang == 'en' else 'යවන්නද, නැද්ද?')
+            print(f'  JARVIS: {reply}', flush=True)
+            if speak:
+                speech.SPEAKER.say(reply)
+            return reply
+
         decision = command_router.route(text)
         print(f'  router: {decision["action"]} {decision.get("command")} '
               f'({decision.get("score")})', flush=True)
@@ -979,6 +1032,24 @@ def build_brain(args):
             reply = responses.say_not_understood(lang)
         elif decision['action'] == 'ask':
             reply = responses.say_need_detail(decision.get('detail', ''), lang)
+        elif decision['action'] == 'command' and decision['command'] == 'send_message':
+            person = contacts.find(store, decision['text'])
+            # The recipient is inside the sentence; without removing it the message sent
+            # to your mother opens by naming her in the third person.
+            body = contacts.strip_name(decision.get('content', ''), person)
+            if not person:
+                reply = ('Who should I send it to? They need to be in your contacts.'
+                         if lang == 'en' else
+                         'කාටද යවන්නේ? ඒ කෙනා contacts වල තියෙන්න ඕනේ.')
+            elif not body:
+                reply = responses.say_need_detail('message', lang)
+            else:
+                # Read back exactly what will be sent, then wait. Nothing is sent on the
+                # strength of one misheard sentence.
+                pending.update(person=person, text=body, language=lang)
+                reply = permissions.describe(
+                    'send_message',
+                    {'to': contacts.speakable(person, lang), 'text': body}, lang)
         elif decision['action'] == 'command' and decision['command'] == 'save_note':
             # Saved here rather than by the model, which once announced it had saved a
             # note and never called the tool. The database is the proof, not the reply.

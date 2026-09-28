@@ -171,6 +171,65 @@ class ConstructionTests(unittest.TestCase):
         self.assertEqual(missing, set(), f'used but never imported: {sorted(missing)}')
 
 
+class VadTests(unittest.TestCase):
+    """Speech detection against real recordings.
+
+    This exists because of a bug that cost an evening. Silero VAD v5 needs the last 64
+    samples of the previous frame prepended; without them it returns near-zero for
+    everything. Real speech scored 0.097 instead of 1.000, which looked exactly like a
+    badly chosen threshold and was not one. Nothing in the suite compared the detector
+    against audio known to contain speech, so nothing caught it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import voice_loop
+        cls.voice_loop = voice_loop
+        cls.clips = sorted((voice_loop.ROOT / 'data' / 'voice' / 'clips').glob('*.wav'))
+
+    def test_detects_speech_in_real_recordings(self):
+        if not self.clips:
+            self.skipTest('no recordings in data/voice/clips')
+        vad = self.voice_loop.Vad()
+        frame = self.voice_loop.FRAME
+        for clip in self.clips[:6]:
+            with self.subTest(clip=clip.name):
+                audio = self.voice_loop.load_wav(clip)
+                vad.reset()
+                peak = 0.0
+                speech_frames = 0
+                for start in range(0, len(audio) - frame, frame):
+                    probability = vad.probability(audio[start:start + frame])
+                    peak = max(peak, probability)
+                    speech_frames += probability >= self.voice_loop.SPEECH_ON
+                seconds = speech_frames * frame / self.voice_loop.SAMPLE_RATE
+                self.assertGreater(peak, .8, f'{clip.name}: peak only {peak:.3f}')
+                self.assertGreaterEqual(
+                    seconds, self.voice_loop.MIN_SPEECH,
+                    f'{clip.name}: only {seconds:.2f}s above SPEECH_ON')
+
+    def test_silence_scores_low(self):
+        import numpy
+        vad = self.voice_loop.Vad()
+        for _ in range(5):
+            probability = vad.probability(
+                numpy.zeros(self.voice_loop.FRAME, dtype='float32'))
+        self.assertLess(probability, .3, f'silence scored {probability:.3f}')
+
+    def test_context_is_carried_between_frames(self):
+        """The 64-sample context is what makes the model work at all."""
+        import numpy
+        vad = self.voice_loop.Vad()
+        self.assertEqual(len(vad.context), self.voice_loop.VAD_CONTEXT)
+        frame = numpy.linspace(-.5, .5, self.voice_loop.FRAME).astype('float32')
+        vad.probability(frame)
+        self.assertTrue(numpy.array_equal(vad.context, frame[-self.voice_loop.VAD_CONTEXT:]),
+                        'context was not updated from the frame just processed')
+        vad.reset()
+        self.assertTrue(numpy.array_equal(vad.context,
+                                          numpy.zeros(self.voice_loop.VAD_CONTEXT, dtype='float32')))
+
+
 class MuteTests(unittest.TestCase):
     def test_mute_flag_controls_listening(self):
         import voice_loop

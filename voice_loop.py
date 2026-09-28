@@ -115,8 +115,18 @@ def ensure_vad():
     return VAD_PATH
 
 
+VAD_CONTEXT = 64        # samples of the previous frame that v5 needs prepended
+
+
 class Vad:
-    """Silero voice-activity detection over onnxruntime, no PyTorch."""
+    """Silero voice-activity detection over onnxruntime, no PyTorch.
+
+    Version 5 of the model does NOT take a bare 512-sample frame. It expects the last 64
+    samples of the previous frame prepended, so 576 samples in total, and silently
+    returns near-zero for everything without them. Measured on real recordings of speech:
+    0.097 peak without the context, 1.000 with it. That looked exactly like a badly
+    chosen threshold and was not one.
+    """
 
     def __init__(self):
         import numpy
@@ -131,10 +141,13 @@ class Vad:
 
     def reset(self):
         self.state = self.numpy.zeros((2, 1, 128), dtype=self.numpy.float32)
+        self.context = self.numpy.zeros(VAD_CONTEXT, dtype=self.numpy.float32)
 
     def probability(self, frame):
         """Speech probability for exactly one 512-sample frame."""
-        feed = {'input': frame.reshape(1, -1).astype(self.numpy.float32)}
+        frame = self.numpy.ascontiguousarray(frame, dtype=self.numpy.float32)
+        payload = self.numpy.concatenate([self.context, frame])
+        feed = {'input': payload.reshape(1, -1)}
         if 'sr' in self.inputs:
             feed['sr'] = self.numpy.array(SAMPLE_RATE, dtype=self.numpy.int64)
         if 'state' in self.inputs:
@@ -142,6 +155,7 @@ class Vad:
         outputs = self.session.run(None, feed)
         if len(outputs) > 1 and getattr(outputs[1], 'shape', None) == self.state.shape:
             self.state = outputs[1]
+        self.context = frame[-VAD_CONTEXT:]
         return float(self.numpy.asarray(outputs[0]).reshape(-1)[0])
 
 
@@ -308,8 +322,12 @@ class WakeWord:
         return True
 
 
-def beep(frequency=880, seconds=.12, volume=.25):
-    """Short acknowledging tone, so you know it heard its name."""
+def beep(frequency=880, seconds=.15, volume=.5):
+    """Short acknowledging tone, so you know it heard its name.
+
+    Failures are reported rather than swallowed: a silent beep is indistinguishable from
+    a wake word that never fired, which makes the whole loop impossible to debug.
+    """
     try:
         import numpy
         import sounddevice
@@ -319,8 +337,10 @@ def beep(frequency=880, seconds=.12, volume=.25):
         tone[:fade] *= numpy.linspace(0, 1, fade)
         tone[-fade:] *= numpy.linspace(1, 0, fade)
         sounddevice.play(tone, SAMPLE_RATE, blocking=True)
-    except Exception:
-        pass
+        return True
+    except Exception as error:
+        print(f'  (beep failed: {type(error).__name__}: {str(error)[:90]})', file=sys.stderr)
+        return False
 
 
 class Listener:

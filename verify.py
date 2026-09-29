@@ -417,6 +417,43 @@ def spoken_numbers():
     return PASS, 'every number is a Sinhala word'
 
 
+@check('day 8', 'Live facts from the web')
+def live_knowledge():
+    import knowledge
+    import responses
+    try:
+        rate = knowledge.dollar_rate()
+        weather = knowledge.weather('colombo')
+    except knowledge.Offline as error:
+        return WARN, f'offline: {str(error)[:50]}'
+    if not 100 < rate['rate'] < 2000:
+        return FAIL, f"implausible rupee rate: {rate['rate']}"
+    if not -10 < weather['temperature'] < 55:
+        return FAIL, f"implausible temperature: {weather['temperature']}"
+    spoken = responses.say_dollar(rate, 'si')
+    if str(rate['rate']) not in spoken:
+        return FAIL, 'the spoken rate does not match the fetched one'
+    return PASS, f"USD {rate['rate']} LKR, Colombo {weather['temperature']}C"
+
+
+@check('day 8', 'No internet degrades, never hangs')
+def knowledge_offline():
+    import requests
+    from unittest.mock import patch
+    import knowledge
+    knowledge._cache.clear()
+    with patch('requests.get', side_effect=requests.ConnectionError('simulated')):
+        for call in (knowledge.dollar_rate, lambda: knowledge.weather('colombo'),
+                     knowledge.news):
+            try:
+                call()
+                return FAIL, f'{call} returned instead of reporting offline'
+            except knowledge.Offline:
+                pass
+    knowledge._cache.clear()
+    return PASS, 'every source reports offline cleanly'
+
+
 # ---------------------------------------------------------------- the server
 
 @check('setup', 'Server boots with every endpoint')
@@ -480,7 +517,8 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          google_stt, whisper_loads, vad_check, transcribe_clips, command_accuracy,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
-         routing, routing_safety, saving, spoken_numbers]
+         routing, routing_safety, saving, spoken_numbers,
+         live_knowledge, knowledge_offline]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

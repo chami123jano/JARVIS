@@ -297,3 +297,59 @@ def answer(command, tools, store, lang='si'):
     tool_name, formatter = DIRECT[command]
     result = tools.execute(tool_name, {}) if tool_name else None
     return formatter(result, store, lang)
+
+
+def say_weather(data, lang='si'):
+    """Spoken weather. Degrees and percentages become words, as everywhere else."""
+    place = data.get('place', 'colombo')
+    if lang == 'en':
+        line = (f"In {place.title()} it is {english_number(data['temperature'])} degrees "
+                f"and {data['condition_en']}.")
+        if data.get('rain_chance', 0) >= 50:
+            chance = english_number(data['rain_chance'])
+            article = 'an' if chance.startswith(('eight', 'eleven')) else 'a'
+            line += f' There is {article} {chance} percent chance of rain.'
+        return line
+    sinhala_place = SINHALA_PLACES.get(place, place)
+    line = (f"{sinhala_place} {number_word(data['temperature'])} අංශකයි, "
+            f"{data['condition_si']}.")
+    if data.get('rain_chance', 0) >= 50:
+        line += f" වැස්සක් එන්න සියයට {number_word(data['rain_chance'])}ක ඉඩක් තියෙනවා."
+    return line
+
+
+SINHALA_PLACES = {
+    'colombo': 'කොළඹ', 'kandy': 'මහනුවර', 'galle': 'ගාල්ලේ', 'jaffna': 'යාපනයේ',
+    'negombo': 'මීගමුවේ', 'kurunegala': 'කුරුණෑගල', 'matara': 'මාතර',
+    'anuradhapura': 'අනුරාධපුරේ', 'nuwara eliya': 'නුවරඑළියේ',
+}
+
+
+def say_dollar(data, lang='si'):
+    rate = data.get('rate', 0)
+    if lang == 'en':
+        return f'One US dollar is {rate:,.2f} rupees today.'
+    # The rupee figure is left as digits: three hundred and thirty point six five is
+    # harder to follow spoken than the number itself, and Sinhala TTS reads it correctly.
+    return f'අද එක ඩොලරයක් රුපියල් {rate:,.2f}යි.'
+
+
+def say_converted(data, lang='si'):
+    if lang == 'en':
+        return (f"{data['amount']:,.0f} {data['from']} is about "
+                f"{data['result']:,.0f} {data['to']}.")
+    return f"{data['amount']:,.0f} {data['from']} කියන්නේ රුපියල් {data['result']:,.0f}ක් විතර."
+
+
+def say_news(headlines, lang='si'):
+    if not headlines:
+        return 'No news right now.' if lang == 'en' else 'දැනට පුවත් නැහැ.'
+    listed = '. '.join(item['title'] for item in headlines[:3])
+    if lang == 'en':
+        return f'Today: {listed}.'
+    return f'අද පුවත්. {listed}.'
+
+
+def say_offline(lang='si'):
+    return ('I cannot reach the internet just now.' if lang == 'en'
+            else 'දැන් අන්තර්ජාලයට සම්බන්ධ වෙන්න බැහැ.')

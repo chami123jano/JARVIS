@@ -968,9 +968,19 @@ def build_brain(args):
         raise SystemExit('No model configured. Choose one in Settings first.')
 
     import contacts
+    import knowledge
     import messaging
     import permissions
     import responses
+
+    # Commands answered from the live web. Each names the lookup and how to say it, so
+    # the model is not asked to read a number back and cannot alter it on the way.
+    LIVE = {
+        'weather': (lambda text: knowledge.weather(knowledge.find_place(text)),
+                    responses.say_weather),
+        'dollar_rate': (lambda text: knowledge.dollar_rate(), responses.say_dollar),
+        'news': (lambda text: knowledge.news(), responses.say_news),
+    }
 
     # A message waiting for a yes. Held here rather than acted on, so the next thing
     # said is interpreted as an answer to the question just asked.
@@ -1032,6 +1042,16 @@ def build_brain(args):
             reply = responses.say_not_understood(lang)
         elif decision['action'] == 'ask':
             reply = responses.say_need_detail(decision.get('detail', ''), lang)
+        elif decision['action'] == 'command' and decision['command'] in LIVE:
+            lookup, phrase = LIVE[decision['command']]
+            try:
+                reply = phrase(lookup(decision['text']), lang)
+            except knowledge.Offline as error:
+                print(f'  offline: {error}', file=sys.stderr)
+                reply = responses.say_offline(lang)
+            except Exception as error:
+                print(f'  lookup failed: {error}', file=sys.stderr)
+                reply = responses.say_offline(lang)
         elif decision['action'] == 'command' and decision['command'] == 'send_message':
             person = contacts.find(store, decision['text'])
             # The recipient is inside the sentence; without removing it the message sent

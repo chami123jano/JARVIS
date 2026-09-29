@@ -140,6 +140,11 @@ def strip_name(text, person):
     if not matched:
         return text
     kept = [word for word in str(text).split() if word != matched]
+    # Removing the name can leave the word that introduced it: "to amma I am coming"
+    # became "to I am coming", and that dangling word goes out in the message.
+    leading = {'to', 'tell', 'for', 'at', 'ta'}
+    while kept and kept[0].lower().strip(' ,.') in leading:
+        kept.pop(0)
     return ' '.join(kept).strip(' .,!?')
 
 

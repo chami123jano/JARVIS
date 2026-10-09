@@ -597,6 +597,15 @@ proved the server was correct all along. **Do not test Sinhala endpoints from Po
 
 ---
 
+#### ✅ Day 4 complete — commits `2d7c666`, `ade7c13`, `f716706`, `9376c79`, `e51dff3`
+
+Wake word threshold set from a real recording: "hey jarvis" scored 0.950/0.868/0.863,
+everything else reached 0.474, so 0.6 sits in the gap. Two serious bugs found by using it:
+Silero VAD v5 needs 64 samples of context prepended and had never worked at all (0.097
+against 1.000 on real speech), and JARVIS answered its own voice because audio kept
+buffering while it spoke. An emoji in one reply was read aloud as "smiling face with
+smiling eyes", heard back, and spiralled.
+
 ### Day 4 — "Hey JARVIS" — hands-free
 
 **Goal:** it listens always, wakes to its name, and you never touch the keyboard.
@@ -627,6 +636,12 @@ confirmation, so a misfire cannot send anything.
 
 ## PHASE B — Sinhala mastery (Days 5–6)
 
+#### ✅ Day 5 complete — commits `fa64d09`, `2fb8c5a`
+
+20 commands, ~130 phrasings, matched by sound. 17 of 20 real recordings act directly, 0
+wrong. Found the model announcing a saved note it never saved — notes and reminders are
+now written by the router, not described by the model.
+
 ### Day 5 — The Sinhala command router
 
 **Goal:** your everyday commands become instant and near-perfect, no longer depending on the
@@ -652,6 +667,12 @@ model guessing right.
 
 ---
 
+#### ✅ Day 6 complete — commit `b2217ae`
+
+Replies follow the language asked in. Also found a two second tax on every Ollama call:
+Windows resolves `localhost` to IPv6 first and waits for it to fail — 2.03s against 0.015
+for 127.0.0.1.
+
 ### Day 6 — The bilingual mind
 
 **Goal:** it handles real Sri Lankan speech — Sinhala, English and the mix you actually use.
@@ -673,6 +694,11 @@ model guessing right.
 ---
 
 ## PHASE C — Actions (Days 7–11)
+
+#### ✅ Day 7 complete — commits `1ce7d1e`, `379ad89`
+
+WhatsApp Desktop deep link, confirmation gate, contacts seeded by hand. Nothing sends
+without a human keystroke by default.
 
 ### Day 7 — WhatsApp messaging
 
@@ -859,6 +885,12 @@ work by voice.
 ---
 
 ## PHASE D — Knowledge and memory (Days 12–14)
+
+#### ✅ Day 12 complete — commit `0337e85`
+
+Built early, out of order, and committed under the wrong label ("Day 8"). Dollar rate,
+weather for ten towns, Sri Lankan news. The plan's actual Day 8 is the phone bridge and
+is NOT done.
 
 ### Day 12 — Real web knowledge
 

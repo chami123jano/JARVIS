@@ -841,6 +841,24 @@ after confirmation.
 
 ---
 
+#### ✅ Day 10 complete — volume, applications, screen, clipboard
+
+Windows lists 223 applications through Get-StartApps; scanning the Start Menu for .lnk
+files finds 158 and misses Notepad, WhatsApp and VS Code, which are Store apps with no
+shortcut file. Launching goes through shell:AppsFolder, so Win32 and Store apps work
+alike. Names match phonetically, so "ක්‍රෝම්" opens Chrome, with an alias table for
+abbreviations that share no letters with the real name ("vs code").
+
+Two matching bugs worth remembering, both the same shape as earlier ones. Flat
+containment scoring made "chrome" open Chrome Remote Desktop, because both contain the
+word and the first one seen won; it is now scaled by how much of the name is covered.
+And "zzzzqqq" collapses to "sk", which sits inside "ekskel" (excel) and scored 0.85 --
+noise must not open an application, so short fragments no longer match by containment.
+
+Deliberately not built: shutdown, delete and anything costing money stay at tier three
+and have no implementation at all. There is no shell tool, and a test asserts
+pc_control has no function by any such name.
+
 ### Day 10 — Full PC control
 
 **Goal:** it runs the laptop, not four hardcoded apps.

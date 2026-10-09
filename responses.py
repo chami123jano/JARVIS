@@ -353,3 +353,32 @@ def say_news(headlines, lang='si'):
 def say_offline(lang='si'):
     return ('I cannot reach the internet just now.' if lang == 'en'
             else 'දැන් අන්තර්ජාලයට සම්බන්ධ වෙන්න බැහැ.')
+
+
+def say_volume(data, lang='si'):
+    level = data.get('volume')
+    if data.get('muted'):
+        return 'Muted.' if lang == 'en' else 'සද්දේ නිහඬ කළා.'
+    if level is None:
+        return 'Done.' if lang == 'en' else 'හරි.'
+    if lang == 'en':
+        return f'Volume is at {english_number(level)} percent.'
+    return f'සද්දේ {percent(level)}යි.'
+
+
+def say_opened(name, lang='si'):
+    return f'Opening {name}.' if lang == 'en' else f'{name} ඕපන් කරනවා.'
+
+
+def say_app_missing(spoken, lang='si'):
+    if lang == 'en':
+        return f'I could not find an application called {spoken}.'
+    return f'{spoken} කියන ඇප් එකක් හම්බවුණේ නෑ.'
+
+
+def say_screenshot(data, lang='si'):
+    return 'Screenshot saved.' if lang == 'en' else 'ස්ක්‍රීන්ෂොට් එක සේව් කළා.'
+
+
+def say_locking(lang='si'):
+    return 'Locking the computer.' if lang == 'en' else 'පරිගණකය ලොක් කරනවා.'

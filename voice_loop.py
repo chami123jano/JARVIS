@@ -969,9 +969,36 @@ def build_brain(args):
 
     import contacts
     import knowledge
+    import pc_control
     import messaging
     import permissions
     import responses
+
+    def do_open_app(decision, lang):
+        spoken = decision.get('content') or decision['text']
+        app = pc_control.find_app(spoken)
+        if not app:
+            return responses.say_app_missing(spoken[:30], lang)
+        pc_control.open_app(spoken)
+        return responses.say_opened(app['name'].title(), lang)
+
+    def do_lock(decision, lang):
+        reply = responses.say_locking(lang)
+        # Said before locking, or it is said to a locked screen.
+        if not args.silent:
+            speech.SPEAKER.say(reply)
+        pc_control.lock()
+        return reply
+
+    # Things done to this machine. Each returns what was actually done, so the reply
+    # cannot describe an action that did not happen.
+    MACHINE = {
+        'volume_up': lambda d, lang: responses.say_volume(pc_control.volume(step=15), lang),
+        'volume_down': lambda d, lang: responses.say_volume(pc_control.volume(step=-15), lang),
+        'screenshot': lambda d, lang: responses.say_screenshot(pc_control.screenshot(), lang),
+        'open_app': do_open_app,
+        'lock_pc': do_lock,
+    }
 
     # Commands answered from the live web. Each names the lookup and how to say it, so
     # the model is not asked to read a number back and cannot alter it on the way.
@@ -1042,6 +1069,16 @@ def build_brain(args):
             reply = responses.say_not_understood(lang)
         elif decision['action'] == 'ask':
             reply = responses.say_need_detail(decision.get('detail', ''), lang)
+        elif decision['action'] == 'command' and decision['command'] in MACHINE:
+            try:
+                reply = MACHINE[decision['command']](decision, lang)
+            except pc_control.ControlError as error:
+                print(f'  control failed: {error}', file=sys.stderr)
+                reply = (str(error) if lang == 'en'
+                         else responses.say_failed('', lang))
+            except Exception as error:
+                print(f'  control failed: {error}', file=sys.stderr)
+                reply = responses.say_failed('', lang)
         elif decision['action'] == 'command' and decision['command'] in LIVE:
             lookup, phrase = LIVE[decision['command']]
             try:

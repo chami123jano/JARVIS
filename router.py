@@ -161,11 +161,36 @@ def phrase_score(text, phrase):
     return max(whole, similarity(head, target))
 
 
+# A word distinctive enough to name the command on its own. "open whatsapp" shares
+# little with any phrasing, because the application name is most of the sentence and
+# could be anything; the verb is the part that carries the intent.
+KEYWORDS = {
+    'open_app': ['open', 'ඕපන්', 'විවෘත', 'launch', 'oapan'],
+    'play_music': ['sinduwak', 'සින්දුවක්', 'සිංදු'],
+}
+KEYWORD_FLOOR = .78
+
+
+def has_keyword(text, command):
+    from difflib import SequenceMatcher
+    words = normalize(text).split()
+    for keyword in KEYWORDS.get(command, []):
+        target = normalize(keyword).replace(' ', '')
+        if not target:
+            continue
+        for word in words:
+            if SequenceMatcher(None, word, target).ratio() >= .85:
+                return True
+    return False
+
+
 def match(text):
     """Best command for this transcript: (name, score, runner_up, runner_up_score)."""
     scored = []
     for name, phrasings in COMMANDS.items():
         best = max(phrase_score(text, phrase) for phrase in phrasings)
+        if name in KEYWORDS and has_keyword(text, name):
+            best = max(best, KEYWORD_FLOOR)
         scored.append((best, name))
     scored.sort(reverse=True)
     (top_score, top), (second_score, second) = scored[0], scored[1]
@@ -241,10 +266,12 @@ FILLER = {
                  'minitthu', 'minute', 'minutes', 'hour', 'hours', 'dahayakin', 'pahakin'],
     'send_message': ['මැසේජ්', 'එකක්', 'යවන්න', 'කියලා', 'message', 'ekak', 'yavanna',
                      'send', 'a', 'to'],
+    'open_app': ['ඕපන්', 'කරන්න', 'එක', 'විවෘත', 'open', 'karanna', 'eka', 'launch',
+                 'start', 'up'],
 }
 
 
-def strip_command(text, command):
+def strip_command(text, command, use_phrasing=True):
     """What is left after removing the words that gave the order.
 
     Two passes: the phrasing that matched, and a per-command filler list. The threshold
@@ -253,9 +280,14 @@ def strip_command(text, command):
     stray word in it.
     """
     from difflib import SequenceMatcher
-    phrasings = COMMANDS.get(command, [])
-    best = max(phrasings, key=lambda p: similarity(text, p)) if phrasings else ''
-    targets = [normalize(word) for word in best.split()]
+    # For open_app the phrasings name an example application ("chrome eka open
+    # karanna"), so stripping by phrasing removes the very word being asked for. Those
+    # commands strip by filler list only.
+    targets = []
+    if use_phrasing:
+        phrasings = COMMANDS.get(command, [])
+        best = max(phrasings, key=lambda p: similarity(text, p)) if phrasings else ''
+        targets += [normalize(word) for word in best.split()]
     targets += [normalize(word) for word in FILLER.get(command, [])]
     targets = [t for t in targets if t]
 
@@ -304,12 +336,14 @@ def route(text):
         result['content'] = strip_command(text, name)
         if not seconds:
             result.update(action='model', reason='reminder without a clear time')
-    elif name in ('save_note', 'send_message'):
-        result['content'] = strip_command(text, name)
+    elif name in ('save_note', 'send_message', 'open_app'):
+        result['content'] = strip_command(text, name, use_phrasing=(name != 'open_app'))
         if not result['content']:
-            # "save a note" with nothing to save. Ask, rather than saving an empty note
-            # or letting the model invent one.
-            result.update(action='ask', detail='note' if name == 'save_note' else 'message')
+            # An order with nothing attached. Ask, rather than saving an empty note,
+            # messaging nobody, or opening whatever the sentence happens to resemble.
+            result.update(action='ask',
+                          detail={'save_note': 'note', 'send_message': 'message',
+                                  'open_app': 'app'}[name])
     return result
 
 

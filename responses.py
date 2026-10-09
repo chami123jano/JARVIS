@@ -382,3 +382,28 @@ def say_screenshot(data, lang='si'):
 
 def say_locking(lang='si'):
     return 'Locking the computer.' if lang == 'en' else 'පරිගණකය ලොක් කරනවා.'
+
+
+def say_recent_messages(messages, lang='si'):
+    """What arrived while you were away."""
+    if not messages:
+        return 'Nothing new.' if lang == 'en' else 'අලුතෙන් මොකුත් නෑ.'
+    if lang == 'en':
+        if len(messages) == 1:
+            m = messages[0]
+            return f'One message. {m["sender"]} says: {m.get("body") or ""}'.strip()
+        senders = ', '.join(dict.fromkeys(m['sender'] for m in messages[:4]))
+        return f'{english_number(len(messages))} messages, from {senders}.'
+    if len(messages) == 1:
+        m = messages[0]
+        body = m.get('body') or ''
+        return f'{m["sender"]}ගෙන් මැසේජ් එකක්. {body}'.strip()
+    senders = ', '.join(dict.fromkeys(m['sender'] for m in messages[:4]))
+    return f'මැසේජ් {number_word(len(messages))}ක් තියෙනවා. {senders}ගෙන්.'
+
+
+def say_notifications_off(lang='si'):
+    if lang == 'en':
+        return ('No applications are allowed to notify me yet. '
+                'Add one with notifications.py --allow WhatsApp.')
+    return 'තාම මොන ඇප් එකකටවත් අවසර දීලා නෑ.'

@@ -29,3 +29,16 @@ SpeechRecognition>=3.10,<4
 # Remove both lines to run speech recognition on the CPU instead; it costs about a second.
 nvidia-cublas-cu12; platform_machine == "AMD64" or platform_machine == "x86_64"
 nvidia-cudnn-cu12; platform_machine == "AMD64" or platform_machine == "x86_64"
+
+# Reading Windows notifications, so JARVIS learns that a message arrived without
+# touching the WhatsApp window (Day 7b). Costs no data: Windows hands them over.
+# The 'winsdk' package has no Python 3.13 wheel; these modular ones do.
+winrt-Windows.UI.Notifications.Management>=3,<4
+winrt-Windows.UI.Notifications>=3,<4
+winrt-Windows.Foundation>=3,<4
+winrt-Windows.Foundation.Collections>=3,<4
+winrt-Windows.ApplicationModel>=3,<4
+
+# Machine control (Day 10): exact volume, and screenshots.
+pycaw>=20240000
+Pillow>=11,<14

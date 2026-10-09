@@ -454,6 +454,30 @@ def knowledge_offline():
     return PASS, 'every source reports offline cleanly'
 
 
+@check('day 7b', 'Notification listener, and what it refuses to say')
+def notification_listener():
+    import tempfile
+    import notifications as nf
+    from assistant_core import Store
+    if not nf.available():
+        return WARN, 'Windows has not granted notification access'
+    with tempfile.TemporaryDirectory() as folder:
+        store = Store(Path(folder) / 'v.db')
+        item = {'id': 1, 'app': 'WhatsApp', 'title': 'amma', 'body': 'hello',
+                'texts': ['amma', 'hello']}
+        if nf.describe(item, store) is not None:
+            return FAIL, 'announced a message with nothing on the allowlist'
+        nf.allow(store, 'WhatsApp')
+        if nf.describe(item, store) is None:
+            return FAIL, 'did not announce a permitted application'
+        code = {**item, 'title': 'Bank', 'body': 'Your OTP is 384521'}
+        spoken = nf.describe(code, store)
+        if '384521' in spoken['spoken']:
+            return FAIL, 'would read a one-time code aloud'
+    count = len(nf.read_all())
+    return PASS, f'{count} notifications readable, allowlist and code guard hold'
+
+
 # ---------------------------------------------------------------- the server
 
 @check('setup', 'Server boots with every endpoint')
@@ -518,7 +542,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline]
+         live_knowledge, knowledge_offline, notification_listener]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

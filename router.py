@@ -112,6 +112,11 @@ COMMANDS = {
         'oyata monava karanna puluvanda', 'monava karanna puluvanda',
         'what can you do',
     ],
+    'read_messages': [
+        'මොනවද ආවේ', 'මැසේජ් මොනවද ආවේ', 'කවුද මැසේජ් කළේ', 'මැසේජ් බලන්න',
+        'monavada ave', 'message monavada ave', 'kavuda message kale',
+        'what messages came', 'any messages', 'who messaged me',
+    ],
     'stop': [
         'නවත්වන්න', 'නිශ්ශබ්ද වෙන්න',
         'navathvanna', 'nishshabda venna', 'stop talking', 'be quiet',

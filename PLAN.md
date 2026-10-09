@@ -740,6 +740,25 @@ top of `messaging.py` so a fix is one line. The deep link itself is stable.
 
 ---
 
+#### ✅ Day 7b complete — Windows notifications, not window scraping
+
+Windows hands any program the notifications other applications post, through
+UserNotificationListener. JARVIS never touches the WhatsApp window, so a WhatsApp
+redesign cannot break it, and the same code covers Telegram and email once permitted.
+Detecting a message costs no data at all; only speaking it does, about 25 KB.
+
+The 'winsdk' package has no Python 3.13 wheel; the modular winrt-Windows.* packages do.
+
+The privacy rules are the point, and each has a test. The allowlist starts empty, so
+nothing is heard until WhatsApp is added by hand. One-time codes are shown and never
+spoken: a false positive puts the text on screen, a false negative reads a banking code
+aloud in a room with other people in it. A sender can be muted without muting the
+application. Starting up does not announce the twenty-six notifications already on
+screen.
+
+Not built: reading the body back costs data, so read_message_body can be turned off to
+announce only who messaged -- that phrase is cached, so those notifications are free.
+
 ### Day 7b — Reading incoming messages
 
 **Goal:** *"Chamindu, amma ta message ekak awa — mama gedara enawa kiyala."*

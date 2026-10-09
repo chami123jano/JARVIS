@@ -969,10 +969,44 @@ def build_brain(args):
 
     import contacts
     import knowledge
+    import notifications
     import pc_control
     import messaging
     import permissions
     import responses
+
+    # Messages heard about but not yet read out. Held so "මොනවද ආවේ" can answer.
+    inbox = []
+
+    def do_read_messages(decision, lang):
+        if not notifications.allowed_apps(store):
+            return responses.say_notifications_off(lang)
+        recent = list(inbox)
+        inbox.clear()
+        return responses.say_recent_messages(recent, lang)
+
+    def start_watching():
+        """Announce arriving messages, if an application has been allowed."""
+        if not notifications.allowed_apps(store):
+            return None
+        if not notifications.available():
+            print('  (Windows has not granted notification access)', file=sys.stderr)
+            return None
+        watcher = notifications.Watcher(store)
+
+        def announce(message):
+            inbox.append(message)
+            print(f'\n  * {message["shown"][:90]}', flush=True)
+            print(f'  JARVIS: {message["spoken"][:90]}', flush=True)
+            if not args.silent:
+                speech.SPEAKER.say(message['spoken'])
+
+        thread = threading.Thread(
+            target=lambda: watcher.watch(announce, store.config('reply_language', 'si')),
+            daemon=True)
+        thread.start()
+        print(f'Listening for messages from: {", ".join(notifications.allowed_apps(store))}')
+        return watcher
 
     def do_open_app(decision, lang):
         spoken = decision.get('content') or decision['text']
@@ -998,6 +1032,7 @@ def build_brain(args):
         'screenshot': lambda d, lang: responses.say_screenshot(pc_control.screenshot(), lang),
         'open_app': do_open_app,
         'lock_pc': do_lock,
+        'read_messages': do_read_messages,
     }
 
     # Commands answered from the live web. Each names the lookup and how to say it, so
@@ -1158,7 +1193,7 @@ def build_brain(args):
             speech.SPEAKER.say(reply)
         return reply
 
-    return respond, speech
+    return respond, speech, start_watching
 
 
 def talk_loop(args):
@@ -1168,7 +1203,8 @@ def talk_loop(args):
     the end of a sentence. The most reliable way to use it, and the right fallback
     whenever the always-listening loop misbehaves.
     """
-    respond, _ = build_brain(args)
+    respond, _, start_watching = build_brain(args)
+    start_watching()
     ears = Hearing(args.stt, args.model, args.whisper_device)
     language = None if args.lang == 'auto' else args.lang
 
@@ -1202,7 +1238,8 @@ def talk_loop(args):
 
 def wake_loop(args):
     """Always-listening JARVIS: wake word, Sinhala command, spoken Sinhala reply."""
-    respond, speech = build_brain(args)
+    respond, speech, start_watching = build_brain(args)
+    start_watching()
     vad = Vad()
     ears = Hearing(args.stt, args.model, args.whisper_device)
     listener = Listener(vad, ears, args.device, args.wake_threshold,

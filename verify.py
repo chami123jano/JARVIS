@@ -570,6 +570,40 @@ def self_extending():
                   'checker, approval tests and isolated runs work')
 
 
+@check('day 15', 'Sees the screen: capture, shrink, a model that reads images')
+def sees_screen():
+    import requests
+    import vision
+    from assistant_core import ROOT as CORE_ROOT, Store
+    image, shows = vision.capture('window')
+    _, size = vision.prepare(image)
+    if max(size) > vision.MAX_SIDE:
+        return FAIL, f'a {size} picture would be sent'
+    model = Store(CORE_ROOT / 'data' / 'jarvis.db').config('model', '')
+    try:
+        abilities = requests.post(vision.ENDPOINT + '/api/show', json={'model': model},
+                                  timeout=10).json().get('capabilities', [])
+    except requests.RequestException:
+        return WARN, 'Ollama did not answer; capture works'
+    if 'vision' not in abilities:
+        return FAIL, f'{model} cannot read images'
+    return PASS, f'{model} reads images; captured {shows[:30]}, sent at {size[0]}x{size[1]}'
+
+
+@check('day 22', 'Deep think: room to finish, swap announced, measured')
+def deep_think():
+    import json as _json
+    import agent
+    if agent.DEEP_EFFORT == 'high':
+        return WARN, 'high effort never finished on this machine; medium is measured to'
+    bench = ROOT / 'data' / 'bench_think.json'
+    if not bench.is_file():
+        return WARN, 'not yet measured: run bench_think.py'
+    results = _json.loads(bench.read_text(encoding='utf-8'))
+    scores = {brain: f'{sum(r["ok"] for r in rows)}/{len(rows)}' for brain, rows in results.items()}
+    return PASS, 'hard questions right: ' + ', '.join(f'{b} {s}' for b, s in scores.items())
+
+
 @check('day 27', 'Always on: service, autostart, Ollama')
 def always_on():
     import jarvis_service as service
@@ -649,7 +683,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

@@ -989,6 +989,30 @@ is NOT done.
 
 ## PHASE E — Senses (Days 15–18)
 
+#### ✅ Day 15 complete — an error on screen, explained in Sinhala, nothing typed
+
+A real Windows error dialog in front ("The code execution cannot proceed because
+VCRUNTIME140.dll was not found"), and "මේකේ මොකක්ද වැරැද්ද": 6.8 seconds later, in
+Sinhala, which program, which file is missing, and what to install first. In English,
+2.5 seconds.
+
+`vision.py`. qwen3.5:9b reads images itself (Ollama lists "vision" among its abilities),
+so there is no second model:
+
+  - **"This" is the window in front**, its visible frame only -- what you are looking at,
+    not three monitors and a taskbar. Say "screen" for everything.
+  - **Four kinds of question**: what is wrong (errors first), read it to me, what is on
+    the screen, and a photographed document -- the newest image in Downloads or
+    Pictures, until the phone bridge exists.
+  - **Shrunk to 1,600 pixels on the long side** before sending; a 4K capture is
+    thousands of image tokens for no gain in legibility.
+  - **Captured into memory, sent to Ollama on this computer, dropped.** A test fails if
+    a screenshot is ever written to disk.
+
+Not done, and why: **tesseract OCR** needs an install, which was not done unattended --
+and Windows' own OCR has no Sinhala. The model has read every error dialog and window
+tried so far without it.
+
 ### Day 15 — It sees your screen
 
 **Goal:** "JARVIS, what's wrong with this?" while pointing at nothing.

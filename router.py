@@ -122,6 +122,13 @@ COMMANDS = {
         'ada vistara kiyanna', 'davase vistara kiyanna', 'suba udesanak',
         'briefing eka denna', 'brief me', 'morning briefing', 'good morning',
     ],
+    'look_screen': [
+        'මේකේ මොකක්ද වැරැද්ද', 'මේ error එක මොකක්ද', 'screen එකේ මොකක්ද තියෙන්නේ',
+        'මේක කියවන්න', 'මේ ෆොටෝ එක කියවන්න', 'මේ බිල බලන්න',
+        'meke mokakda waraddha', 'me error eka mokakda', 'screen eke mokakda thiyenne',
+        "what's wrong with this", 'explain this error', "what's on my screen",
+        'read this to me', 'read this photo', 'look at my screen',
+    ],
     'make_skill': [
         'අලුත් tool එකක් හදන්න', 'tool එකක් හදන්න', 'අලුත් skill එකක් හදන්න',
         'ඒක කරන්න ඉගෙන ගන්න', 'aluth tool ekak hadanna', 'tool ekak hadanna',

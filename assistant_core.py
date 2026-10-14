@@ -233,6 +233,16 @@ class Tools:
             return {'text': text, 'to': 'si' if target.startswith('si') else 'en',
                     'note': 'Translate this yourself and reply with the translation only. '
                             'Leave names of people and places unchanged.'}
+        if name == 'propose_skill':
+            import skills
+            need = str(args.get('need', '')).strip()[:300]
+            skills.request_in_background(need, self.store)
+            return {'writing': need, 'usable': False,
+                    'note': 'Being written. Not usable until the user approves it in the console.'}
+        if name.startswith('skill_'):
+            # An approved skill, run in its own process by skill_host.py.
+            import skills
+            return skills.call(skills.find(name[len('skill_'):], skills.ACTIVE), dict(args))
         if name in ('web_search', 'play_music'):
             query = str(args['query']).strip()[:500]
             base = 'https://www.youtube.com/results?search_query=' if name == 'play_music' else 'https://www.google.com/search?q='
@@ -254,13 +264,33 @@ TOOL_DEFINITIONS = {
     'open_app': ('Launch notepad, calculator, paint or explorer.', {'app': 'string'}),
     'translate': ('Translate text between Sinhala and English. Names of people and '
                   'places are left as they are.', {'text': 'string', 'to': 'string'}),
+    'propose_skill': ('When asked for a calculation or conversion that none of your tools '
+                      'can do, propose a new tool for it. It is written in the background '
+                      'and cannot be used until the user reads and approves it in the '
+                      'console. Say exactly that; never say it is ready.', {'need': 'string'}),
     'web_search': ('Open browser search. Does not retrieve results.', {'query': 'string'}),
     'play_music': ('Open YouTube search. Does not start playback.', {'query': 'string'}),
 }
 
 
 def schemas():
-    return [{'type': 'function', 'function': {'name': name, 'description': description,
-            'parameters': {'type': 'object', 'properties': {key: {'type': typ} for key, typ in fields.items()},
-                           'required': list(fields), 'additionalProperties': False}}}
-            for name, (description, fields) in TOOL_DEFINITIONS.items()]
+    built_in = [{'type': 'function', 'function': {'name': name, 'description': description,
+                'parameters': {'type': 'object', 'properties': {key: {'type': typ} for key, typ in fields.items()},
+                               'required': list(fields), 'additionalProperties': False}}}
+                for name, (description, fields) in TOOL_DEFINITIONS.items()]
+    return built_in + skill_schemas()
+
+
+def skill_schemas():
+    """Skills you approved, offered to the model as tools named skill_<name>."""
+    try:
+        import skills
+        approved = skills.active()
+    except Exception:
+        return []
+    return [{'type': 'function', 'function': {
+        'name': f'skill_{s["name"]}', 'description': str(s.get('description', ''))[:300],
+        'parameters': {'type': 'object',
+                       'properties': {k: {'type': v} for k, v in s['inputs'].items()},
+                       'required': list(s['inputs']), 'additionalProperties': False}}}
+        for s in approved]

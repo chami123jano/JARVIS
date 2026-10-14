@@ -542,6 +542,34 @@ def multi_step():
                   f'{tasks.STEP_LIMIT} steps, {tasks.WALL_CLOCK_SECONDS // 60} minutes')
 
 
+@check('day 21', 'Skills it writes: checked, approved by you, run apart')
+def self_extending():
+    import tempfile
+    from unittest.mock import patch
+    import skills
+    if not skills.check(skills.EXAMPLE_SKILL.replace('import math', 'import os')):
+        return FAIL, 'a skill importing os passed the check'
+    with tempfile.TemporaryDirectory() as folder:
+        folder = Path(folder)
+        (folder / 'pending').mkdir()
+        (folder / 'pending' / 'percent_of.py').write_text(skills.EXAMPLE_SKILL, encoding='utf-8')
+        with patch.object(skills, 'PENDING', folder / 'pending'), \
+                patch.object(skills, 'ACTIVE', folder / 'active'):
+            result = skills.approve('percent_of', commit=False)
+            if not result.get('approved'):
+                return FAIL, f'the example skill was not approved: {result}'
+            answer = skills.call(folder / 'active' / 'percent_of.py', {'percent': 15, 'amount': 2000})
+            if answer.get('result') != 300 or not answer.get('si'):
+                return FAIL, f'the isolated run answered {answer}'
+    approved = skills.active()
+    unsafe = [s['name'] for s in approved
+              if skills.check(Path(s['path']).read_text(encoding='utf-8'))]
+    if unsafe:
+        return FAIL, f'approved skills that no longer pass the check: {", ".join(unsafe)}'
+    return PASS, (f'{len(approved)} approved, {len(skills.pending())} waiting for you; '
+                  'checker, approval tests and isolated runs work')
+
+
 @check('day 27', 'Always on: service, autostart, Ollama')
 def always_on():
     import jarvis_service as service
@@ -621,7 +649,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

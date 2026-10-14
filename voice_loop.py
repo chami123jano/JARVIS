@@ -1014,6 +1014,19 @@ def build_brain(args):
         multistep.Steps(store, tools, ask_model=asker), on_change=on_task_change,
         wall_clock=int(store.config('task_minutes', 5)) * 60)
 
+    # New tools JARVIS writes for itself (Day 21). Written in the background by the deep
+    # model, then they wait for you to read and approve them in the console.
+    import skills as learned
+
+    def start_skill(need, lang):
+        def done(result):
+            say_unprompted(responses.say_skill_written(result, lang))
+        try:
+            learned.request_in_background(need, store, done)
+        except learned.SkillError:
+            return responses.say_skill_busy(lang)
+        return responses.say_skill_started(lang)
+
     RETRY_WORDS = ('retry', 'again', 'try again', 'ආයෙත්', 'නැවත', 'ayeth', 'aye')
     SKIP_WORDS = ('skip', 'මඟහරින්න', 'මගහරින්න', 'අතාරින්න', 'maga harinna')
 
@@ -1297,6 +1310,17 @@ def build_brain(args):
             except Exception as error:
                 print(f'  reminder failed: {error}', file=sys.stderr)
                 reply = responses.say_failed('reminder', lang)
+        elif decision['action'] == 'command' and decision['command'] == 'make_skill':
+            reply = start_skill(decision['content'], lang)
+        elif decision['action'] == 'model' and (skill := learned.match(text, learned.active())):
+            # A tool you approved. Run in its own process, never inside JARVIS.
+            try:
+                inputs = learned.extract_inputs(skill, text, asker)
+                result = learned.call(skill['path'], inputs)
+                reply = result.get('en' if lang == 'en' else 'si') or str(result)
+            except learned.SkillError as error:
+                print(f'  skill {skill["name"]} failed: {error}', file=sys.stderr)
+                reply = responses.say_skill_failed(skill, str(error), lang)
         else:
             prompt = command_prompt(decision) if decision['action'] == 'command' else text
             job_id = agent.start(prompt)

@@ -1182,6 +1182,39 @@ Found by running it for real:
 
 ---
 
+#### ✅ Day 21 complete — it writes; you approve; the new tool works by voice
+
+Asked for a kilometres-and-miles converter, gpt-oss:20b wrote `distance_convert` in 141
+seconds. An approved copy passed its own three tests and answered by voice, in English
+and in Sinhala ("කිලෝමීටර් දහයක් මයිල් වලින් කීයද" -> 6.21 miles). **The real one is
+still waiting in skills/pending for you to read**: it treats "metres" as miles and a
+unit spoken in Sinhala as unknown. That is what reading before approving is for.
+
+`skills.py`, `skill_host.py`, and a Skills page in the console:
+
+  - **Checked without being run.** Parsed, never imported: only maths, dates and text
+    modules; no files, network, shell, eval, getattr, print or underscores; nothing at
+    the top level that does anything on load; tier 0 only. A refused attempt goes back
+    to the model once with the reasons.
+  - **Approval is in the console or the command line, never by voice** -- the code is
+    shown in full beside the button. Approving re-checks it, runs its examples as tests,
+    and only then moves it to skills/active and commits that one file to git.
+  - **Skills run in a separate Python process** (`python -I skill_host.py`) with a
+    five-second limit. They never run inside JARVIS and cannot see its database, the
+    console token or your messages. Isolation, not a sandbox -- the check and your
+    reading are the real gates.
+  - **By voice**: "අලුත් tool එකක් හදන්න …" or "make a new tool that …" writes one in the
+    background and says when it is ready to review. Approved skills answer their
+    phrases; the fast model pulls the numbers out of what was said. The chat model sees
+    them as tools, and can propose one when it cannot do something.
+
+**Medium effort, not high.** Measured on the same request: at high, gpt-oss reasoned for
+12,000 tokens (426 s) and was cut off before writing a line; at medium, 9,473 tokens in
+319 s and code that passed first time. The first real run, at high, returned nothing.
+
+Found by testing: Sinhala replies crashed in the isolated process, because `python -I`
+ignores PYTHONIOENCODING and falls back to the Windows code page.
+
 ### Day 21 — It extends itself
 
 **Goal:** when it lacks a tool, it writes one — and you approve it.

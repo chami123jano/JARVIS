@@ -180,6 +180,17 @@ def create_server(port=4190, data_dir=None):
                                       'jobs': [agent.snapshot(key) for key in list(agent.jobs)]})
                 if path.startswith('/api/jobs/'):
                     return self.send(agent.snapshot(path.rsplit('/', 1)[-1]))
+                if path == '/api/skills':
+                    # Pending skills are shown in full: approving means reading the code.
+                    import skills
+                    pending = []
+                    for file in skills.pending():
+                        code = file.read_text(encoding='utf-8')
+                        pending.append({'name': file.stem, 'code': code,
+                                        'problems': skills.check(code)})
+                    return self.send({'pending': pending, 'active': [
+                        {k: s.get(k) for k in ('name', 'title_en', 'title_si', 'description',
+                                               'phrases', 'file')} for s in skills.active()]})
                 if path == '/api/tasks':
                     # Multi-step tasks run in the voice loop; their journals are files.
                     import tasks
@@ -246,6 +257,13 @@ def create_server(port=4190, data_dir=None):
                     return self.send(store.add(body['kind'], body['title'], body.get('content', ''), body.get('due')))
                 if path == '/api/records/update':
                     return self.send(store.update(body['id'], body['action']))
+                if path == '/api/skills/approve':
+                    # Only from the console, with its session token -- never by voice.
+                    import skills
+                    return self.send(skills.approve(str(body['name'])))
+                if path == '/api/skills/reject':
+                    import skills
+                    return self.send(skills.reject(str(body['name']), str(body.get('reason', ''))[:300]))
                 if path == '/api/tasks/stop':
                     import tasks
                     return self.send(tasks.request_stop(body['id']))

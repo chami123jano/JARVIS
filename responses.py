@@ -253,11 +253,13 @@ def say_need_detail(what, lang='si'):
                 'note': 'What should the note say?',
                 'time': 'When should I remind you? Say morning or night as well.',
                 'reminder': 'What should I remind you of?',
+                'skill': 'What should the new tool do?',
                 'app': 'Which application?'}.get(what, 'Tell me a little more.')
     return {'message': 'කාටද මැසේජ් එක යවන්නේ? මොකක්ද කියන්න ඕනේ?',
             'note': 'මොකක්ද සටහන් කරන්නේ?',
             'time': 'කීයටද මතක් කරන්නේ? උදේද රෑද කියලත් කියන්න.',
             'reminder': 'මොකක්ද මතක් කරන්නේ?',
+            'skill': 'අලුත් tool එක මොකක්ද කරන්න ඕනේ?',
             'app': 'මොන ඇප් එකද ඕපන් කරන්නේ?'}.get(what, 'ටිකක් විස්තර කියන්න.')
 
 
@@ -693,3 +695,38 @@ def say_task_progress(task, lang='si'):
                 f'{say_step(current, lang)}.')
     return (f'පියවර {number_word(total)}න් {ordinal(current["number"])}: '
             f'{say_step(current, lang)}.')
+
+
+# ---------------------------------------------------------------- skills it writes (Day 21)
+
+def say_skill_started(lang='si'):
+    if lang == 'en':
+        return ("I'll write that tool with the deep brain. It takes a few minutes. "
+                'You will need to read it and approve it in the console before I use it.')
+    return ('හරි, ඒ tool එක ලියන්නම්. විනාඩි කීපයක් යනවා. '
+            'පාවිච්චි කරන්න කලින් ඔයා console එකේ කියවලා approve කරන්න ඕනේ.')
+
+
+def say_skill_busy(lang='si'):
+    return ('I am already writing one. Ask again when it is done.' if lang == 'en'
+            else 'දැනටමත් එකක් ලියනවා. ඒක ඉවර වුණාම ආයෙත් කියන්න.')
+
+
+def say_skill_written(result, lang='si'):
+    """Said when the writing finishes. It is never said to be ready to use: it is not."""
+    if result.get('error'):
+        return (f'I could not write that tool. {result["error"]}' if lang == 'en'
+                else 'ඒ tool එක ලියන්න බැරි වුණා.')
+    if result.get('problems'):
+        return ('I wrote a tool, but it broke the safety rules, so it was refused. '
+                'The console says why.' if lang == 'en' else
+                'tool එකක් ලිව්වා, ඒත් ආරක්ෂක නීති කැඩුව නිසා ප්‍රතික්ෂේප වුණා. හේතුව console එකේ තියෙනවා.')
+    return ('The new tool is written. Read it in the console, and approve it if it looks '
+            'right.' if lang == 'en' else
+            'අලුත් tool එක ලිව්වා. console එකේ කියවලා, හරි නම් approve කරන්න.')
+
+
+def say_skill_failed(skill, error, lang='si'):
+    title = skill.get('title_en' if lang == 'en' else 'title_si') or skill.get('name', '')
+    return (f'The {title} tool did not work. {error}' if lang == 'en'
+            else f'{title} tool එක වැඩ කළේ නෑ.')

@@ -27,7 +27,7 @@ TIERS = {
     'save_note': LOCAL, 'set_reminder': LOCAL, 'remember': LOCAL,
     'write_document': LOCAL, 'open_app': LOCAL, 'web_search': LOCAL,
     'play_music': LOCAL, 'volume_up': LOCAL, 'volume_down': LOCAL,
-    'screenshot': LOCAL,
+    'screenshot': LOCAL, 'propose_skill': LOCAL,
     # Tier 2: leaves the machine, in the user's name.
     'send_message': OUTWARD, 'send_sms': OUTWARD, 'call': OUTWARD,
     'send_email': OUTWARD, 'whatsapp_send': OUTWARD,
@@ -45,7 +45,22 @@ NO = ('no', 'nope', 'stop', 'cancel', "don't", 'dont', 'wait', 'nevermind',
 
 def tier(action):
     """How dangerous an action is. Unknown actions are treated as outward-facing."""
+    if str(action).startswith('skill_'):
+        return skill_tier(action[len('skill_'):])
     return TIERS.get(action, OUTWARD)
+
+
+def skill_tier(name):
+    """An approved skill's own tier, as written in it and checked on approval. A skill
+    that cannot be found is treated as outward-facing, like any unknown action."""
+    try:
+        import skills
+        for skill in skills.active():
+            if skill['name'] == name:
+                return int(skill.get('tier', OUTWARD))
+    except Exception:
+        pass
+    return OUTWARD
 
 
 def needs_confirmation(action):

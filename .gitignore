@@ -19,3 +19,7 @@ scheduler.json
 settings.json
 notes.json
 calendar.json
+
+# Skills JARVIS wrote that you have not approved. Approved ones in skills/active/ are
+# committed, one commit each, so a bad one is one revert away.
+skills/pending/

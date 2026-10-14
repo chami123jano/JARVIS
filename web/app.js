@@ -179,6 +179,25 @@ document.addEventListener('click', async event => {
   else { try { await api('records/update', {id:button.dataset.complete, action:'complete'}); await refresh(); } catch(error) { toast(error.message); } }
 });
 $('#confirmDelete').onclick = async () => { try { await api('records/update', {id:deleteId, action:'delete'}); $('#deleteDialog').close(); refresh(); } catch(error) { toast(error.message); } };
+// Skills JARVIS wrote. Approval is here, after reading, and never by voice.
+async function refreshSkills() {
+  let data;
+  try { data = await api('skills'); } catch (error) { return; }
+  $('#pendingSkills').innerHTML = data.pending.length ? data.pending.map(s => `<section class="job"><h3>${esc(s.name)} <span class="tiny-tag">${s.problems.length ? 'refused by the check' : 'not reviewed'}</span></h3>${s.problems.length ? `<p class="help">${s.problems.map(esc).join('<br>')}</p>` : ''}<pre class="skill-code">${esc(s.code)}</pre><div class="dialog-actions"><button class="secondary" data-skill-reject="${esc(s.name)}">Reject</button>${s.problems.length ? '' : `<button class="primary" data-skill-approve="${esc(s.name)}">I have read it. Test and approve</button>`}</div></section>`).join('') : '<p class="empty">Nothing waiting. Say "make a new tool that..." and it will appear here.</p>';
+  $('#activeSkills').innerHTML = data.active.length ? data.active.map(s => `<section class="job"><h3>${esc(s.title_en)} <span class="tiny-tag">${esc(s.name)}</span></h3><p class="help">${esc(s.description)}<br>Say: ${(s.phrases || []).slice(0, 3).map(esc).join(' &middot; ')}</p></section>`).join('') : '<p class="empty">No approved skills yet.</p>';
+}
+document.addEventListener('click', async event => {
+  const approve = event.target.closest('[data-skill-approve]')?.dataset.skillApprove;
+  const reject = event.target.closest('[data-skill-reject]')?.dataset.skillReject;
+  try {
+    if (approve) {
+      const result = await api('skills/approve', {name: approve});
+      toast(result.approved ? 'Approved: its tests passed, and it is in use now.' : 'Not approved: ' + (result.problems || (result.tests || []).filter(t => !t[0]).map(t => t[1])).join('; '));
+    }
+    if (reject) { await api('skills/reject', {name: reject, reason: 'rejected in the console'}); toast('Rejected and deleted.'); }
+  } catch (error) { toast(error.message); }
+  if (approve || reject) refreshSkills();
+});
 // Multi-step tasks run in the voice loop; the console reads their journals and can stop them.
 function renderTasks(tasks) {
   const bad = ['failed', 'skipped', 'not run'];
@@ -262,6 +281,6 @@ function draw() {
   context.restore(); requestAnimationFrame(draw);
 }
 draw(); updateVoice(); voiceOptions(); icons(); view(['console','memory','activity','settings'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'console');
-refresh(true); setInterval(refresh,5000); setInterval(reminders,1000); refreshTasks(); setInterval(refreshTasks,3000);
+refresh(true); setInterval(refresh,5000); setInterval(reminders,1000); refreshTasks(); setInterval(refreshTasks,3000); refreshSkills(); setInterval(refreshSkills,10000);
 function updateClock() { $('#clock').textContent = new Date().toLocaleTimeString('en-GB'); }
 updateClock(); setInterval(updateClock,1000);

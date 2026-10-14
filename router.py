@@ -122,6 +122,11 @@ COMMANDS = {
         'ada vistara kiyanna', 'davase vistara kiyanna', 'suba udesanak',
         'briefing eka denna', 'brief me', 'morning briefing', 'good morning',
     ],
+    'make_skill': [
+        'අලුත් tool එකක් හදන්න', 'tool එකක් හදන්න', 'අලුත් skill එකක් හදන්න',
+        'ඒක කරන්න ඉගෙන ගන්න', 'aluth tool ekak hadanna', 'tool ekak hadanna',
+        'make a new tool', 'make a tool that', 'learn how to', 'write a skill',
+    ],
     'task_status': [
         'වැඩේ කොහොමද', 'වැඩේ කොච්චර දුර ගියාද', 'ඉවරද', 'වැඩේ ඉවරද',
         'vade kohomada', 'vade ivarada', 'how is it going', 'are you done',
@@ -413,6 +418,9 @@ FILLER = {
                  'minitthu', 'minute', 'minutes', 'hour', 'hours', 'dahayakin', 'pahakin'],
     'send_message': ['මැසේජ්', 'එකක්', 'යවන්න', 'කියලා', 'message', 'ekak', 'yavanna',
                      'send', 'a', 'to'],
+    'make_skill': ['අලුත්', 'tool', 'එකක්', 'හදන්න', 'skill', 'ඉගෙන', 'ගන්න', 'aluth',
+                   'ekak', 'hadanna', 'make', 'a', 'new', 'that', 'learn', 'how', 'write',
+                   'teach', 'yourself'],
     'open_app': ['ඕපන්', 'කරන්න', 'එක', 'විවෘත', 'open', 'karanna', 'eka', 'launch',
                  'start', 'up'],
 }
@@ -556,6 +564,14 @@ def route(text):
         result['seconds'] = seconds
         if not seconds:
             result.update(action='model', reason='reminder without a clear time')
+    elif name == 'make_skill':
+        # What the new tool should do; the words that asked for it are not part of it.
+        content = strip_command(text, name, use_phrasing=False)
+        # "learn how to work out ...": a leading "to" belongs to the order. Not every "to"
+        # does -- "kilometres to miles" needs it.
+        result['content'] = re.sub(r'^(?:to|that)\s+', '', content, flags=re.I)
+        if len(result['content'].split()) < 2:
+            result.update(action='ask', detail='skill')
     elif name == 'briefing':
         # "Brief me at half past six every day" sets the time; otherwise brief now.
         clock = extract_clock(text)

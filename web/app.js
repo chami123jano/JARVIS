@@ -213,7 +213,7 @@ document.addEventListener('click', event => {
 function renderActivity() {
   if (!state) return;
   const jobs = [...state.jobs].reverse();
-  $('#activityList').innerHTML = jobs.length ? jobs.map(job => `<section class="job"><h3>${esc(job.events[0]?.detail || 'Request')} <span class="tiny-tag">${esc(job.state)}</span></h3>${job.events.map(e => `<details class="event ${e.state}"><summary><time>${esc(e.time)}</time>${esc(e.label)}</summary><pre>${esc(e.detail)}</pre></details>`).join('')}</section>`).join('') : '<p class="empty">Your next request will appear here.</p>';
+  $('#activityList').innerHTML = jobs.length ? jobs.map(job => `<section class="job"><h3>${esc(job.events[0]?.detail || 'Request')} <span class="tiny-tag">${esc(job.state)}</span></h3>${job.events.map(e => `<details class="event ${e.state}"><summary><time>${esc(e.time)}</time>${esc(e.label)}</summary><pre>${esc(e.detail)}</pre></details>`).join('')}${job.reasoning ? `<details class="event"><summary>Full reasoning, ${job.reasoning.length.toLocaleString()} characters. Shown here, never spoken.</summary><pre>${esc(job.reasoning)}</pre></details>` : ''}</section>`).join('') : '<p class="empty">Your next request will appear here.</p>';
 }
 function populateSettings() {
   $('#modelSelect').innerHTML = '<option value="">Built-in tools only</option>' + state.ollama.models.map(model => `<option>${esc(model)}</option>`).join('');

@@ -1237,6 +1237,41 @@ Generated code with your approval is a superpower; generated code without it is 
 
 ---
 
+#### ✅ Day 22 complete — measured: the deep brain is both more accurate and quicker
+
+`bench_think.py`, eight hard questions with answers worked out by code:
+
+| brain | right | time |
+|---|---|---|
+| qwen3.5:9b, as voice uses it | 6 / 8 | 156 s |
+| qwen3.5:9b, thinking on | 5 / 8 | 868 s -- ran out of room mid-thought three times |
+| **gpt-oss:20b, medium effort** | **8 / 8** | **260 s, including the 40 s load** |
+
+By voice: "හොඳට හිතලා බලන්න, රුපියල් එක, දෙක, පහ, දහය කාසි වලින් හරියටම රුපියල් පනහක්
+හදන්න පුළුවන් ක්‍රම කීයද?" -- an instant "I'll think about it", the time answered
+meanwhile, then 1.4 minutes later "341" in Sinhala (correct), with the fast brain back.
+
+  - **Asked for, not guessed**: "think hard", "හොඳට හිතලා බලන්න". Runs in the background;
+    JARVIS keeps listening and speaks the answer when it comes.
+  - **Medium effort, with room**: 16k context, 12,000 tokens, 15 minutes. High effort
+    never finished on this machine (Day 21).
+  - **The reasoning goes to the console** (Activity), all of it, and is never spoken.
+  - **The memory swap is announced and undone**: loading gpt-oss evicts qwen3.5 on
+    15.6 GB; afterwards gpt-oss is unloaded and qwen3.5 reloaded (9 s), before the
+    answer is given. With 32 GB both would stay resident.
+
+Found by running it:
+  - **gpt-oss does not read Sinhala.** Asked the coin question, it decided the user
+    wanted to know how coins are minted, and opened a web search on the screen. Sinhala
+    questions are now translated by the fast brain, reasoned in English, and translated
+    back.
+  - **The translator then turned "පනහක්" (fifty) into "one hundred"**, and the deep
+    brain answered that question perfectly (2,156, also correct). Number words are now
+    turned into digits by lookup before translation -- a digit survives; a word did not.
+  - **Deep thinking reads; it does not act**: it is given only tier-0 tools.
+  - The swap back ran after the job was marked done, so a caller could see the answer
+    while no brain was loaded at all.
+
 ### Day 22 — Deep think
 
 **Goal:** hard problems get real thought instead of a fast guess.

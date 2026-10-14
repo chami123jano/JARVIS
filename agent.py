@@ -8,7 +8,10 @@ import uuid
 
 import requests
 
+import permissions
 from assistant_core import schemas
+from responses import language_of
+from sinhala import numbers_to_digits
 
 # Raised from 8 now that native tool calling makes each step cheap.
 MAX_TOOL_CALLS = 16
@@ -21,8 +24,15 @@ THINK_PATTERNS = re.compile(
     r'pros and cons|step by step|hitha|balanna|hoyanna)\b', re.I)
 DEEP_PATTERNS = re.compile(
     r'\b(think hard|think deeply|deep think|think properly|use the deep|'
-    r'hitha balanna|hondata hitha)\b', re.I)
+    r'hitha balanna|hithala balanna|hondata hitha\w*)\b'
+    # Sinhala script: \b does not work after a vowel sign, so these stand without it.
+    r'|හොඳට හිතලා|හොඳින් හිතලා|ගැඹුරින් හිත|හිතලා බලලා|හිතලා බලන්න', re.I)
 THINK_MIN_LENGTH = 180
+# The deep brain's effort. Measured on this machine (Day 21): at "high", gpt-oss:20b
+# reasoned for 12,000 tokens over seven minutes and never reached an answer; at "medium",
+# 9,500 tokens and a correct one in five.
+DEEP_EFFORT = 'medium'
+DEEP_SECONDS = 900
 
 # Past-tense claims that only hold if the matching tool actually ran. Measured on
 # qwen3.5:9b: given "calculate 137*23 then save a note with the result", it called
@@ -184,10 +194,23 @@ class Agent:
                 model, think, deep = self.brain(prompt)
                 with self.lock:
                     job['model'] = model
+                asked = prompt
                 if deep:
-                    self.event(job_id, 'Deep reasoning', f'Handing this to {model}. It will take longer.')
+                    with self.lock:
+                        job['deep'] = True
+                    if language_of(prompt) == 'si':
+                        # Measured: given a Sinhala coin-counting question, gpt-oss decided
+                        # it was about how coins are minted, and searched the web for that.
+                        # The fast brain reads Sinhala well and is still loaded.
+                        asked = self.translate(numbers_to_digits(prompt), 'English') + \
+                            '\n\n(Asked in Sinhala. Answer in English; it will be translated.)'
+                        self.event(job_id, 'Translated for the deep brain', asked)
+                    self.event(job_id, 'Loading the deep brain',
+                               f'{model} does not fit beside the fast brain in 15.6 GB, so the '
+                               'fast one is unloaded first. Loading takes about 40 seconds; '
+                               'the thinking itself, a few minutes.')
                 messages = [{'role': 'system', 'content': self.system_prompt()}, *history,
-                            {'role': 'user', 'content': prompt}]
+                            {'role': 'user', 'content': asked}]
                 answer = ''
                 calls = 0
                 corrections = 0
@@ -234,6 +257,12 @@ class Agent:
                     answer = 'The step limit was reached. Review the activity log for completed actions.'
             if job['cancel'].is_set():
                 raise InterruptedError()
+            if job.get('deep'):
+                # Before "done": whoever waits for the answer must find the fast brain back.
+                self.release_deep(job_id)
+                if language_of(prompt) == 'si' and language_of(answer) != 'si':
+                    answer = self.translate(answer, 'everyday spoken Sinhala')
+                    self.event(job_id, 'Translated back', answer)
             self.store.message('assistant', answer)
             with self.lock:
                 job['answer'], job['state'], job['partial'] = answer, 'done', ''
@@ -251,6 +280,51 @@ class Agent:
             with self.lock:
                 job['state'], job['answer'] = 'error', str(error)
             self.event(job_id, 'Needs attention', str(error), 'error')
+        finally:
+            if job.get('deep') and not job.get('released'):
+                self.release_deep(job_id)
+
+    def translate(self, text, language):
+        """The fast brain translates; it reads and writes Sinhala far better than gpt-oss."""
+        fast = self.store.config('model', '')
+        response = requests.post(self.endpoint + '/api/chat', json={
+            'model': fast, 'stream': False, 'think': False, 'keep_alive': '30m',
+            'messages': [{'role': 'user', 'content':
+                          f'Translate this into {language}. Keep every number, name and '
+                          'technical term exactly. Reply with the translation only, as it '
+                          f'would be said aloud.\n\n{text}'}],
+            'options': {'temperature': 0, 'num_ctx': 8192, 'num_predict': 2000}},
+            timeout=(5, 180))
+        if not response.ok:
+            raise ValueError(f'could not translate: {response.text[:200]}')
+        return (response.json().get('message') or {}).get('content', '').strip() or text
+
+    def wants_deep(self, prompt):
+        """Asked to think hard, and the deep brain is configured."""
+        return bool(self.store.config('deep_model', 'gpt-oss:20b')) and \
+            bool(DEEP_PATTERNS.search(str(prompt)))
+
+    def release_deep(self, job_id):
+        """Unload the deep brain and bring the fast one back, and say so.
+
+        On 15.6 GB both do not fit: loading gpt-oss pushed qwen3.5 out (measured, 41 s to
+        load). Left resident, the next quick command would wait for the swap back.
+        """
+        deep = self.store.config('deep_model', 'gpt-oss:20b')
+        fast = self.store.config('model', '')
+        with self.lock:
+            self.jobs[job_id]['released'] = True
+        try:
+            requests.post(self.endpoint + '/api/generate', json={'model': deep, 'keep_alive': 0},
+                          timeout=30)
+            if fast:
+                started = time.monotonic()
+                requests.post(self.endpoint + '/api/generate',
+                              json={'model': fast, 'keep_alive': '30m'}, timeout=180)
+                self.event(job_id, 'Fast brain back',
+                           f'{deep} unloaded; {fast} reloaded in {time.monotonic() - started:.0f}s.')
+        except requests.RequestException as error:
+            self.event(job_id, 'Could not swap the brains back', str(error)[:200], 'error')
 
     def generate(self, job_id, model, messages, think=False, deep=False):
         """Ask the model for its next move using Ollama's native tool calling.
@@ -262,18 +336,26 @@ class Agent:
         if not self.native_tools:
             return self.generate_envelope(job_id, model, messages)
 
-        payload = {'model': model, 'messages': messages, 'tools': schemas(), 'stream': True,
-                   'think': bool(think),
-                   'options': {'num_ctx': 8192, 'num_predict': 4096 if deep else 1600,
+        # Deep thinking reads; it does not act. Measured: handed every tool, gpt-oss opened
+        # a web search on the screen in the middle of a counting problem.
+        tools = [s for s in schemas() if not deep or
+                 permissions.tier(s['function']['name']) == permissions.READ]
+        payload = {'model': model, 'messages': messages, 'tools': tools, 'stream': True,
+                   'think': DEEP_EFFORT if deep else bool(think),
+                   # Reasoning at medium effort runs to about 9,500 tokens; 4,096 cut it
+                   # off before the answer, and 8,192 of context left no room for both.
+                   'options': {'num_ctx': 16384 if deep else 8192,
+                               'num_predict': 12000 if deep else 1600,
                                'temperature': 0.15}}
+        deadline = DEEP_SECONDS if deep else 180
         try:
-            return self.stream(job_id, payload, deadline=600 if deep else 180)
+            return self.stream(job_id, payload, deadline=deadline)
         except ValueError as error:
             text = str(error).lower()
             if 'think' in text:
                 # Model has no thinking mode; ask again without the switch.
                 payload.pop('think', None)
-                return self.stream(job_id, payload, deadline=600 if deep else 180)
+                return self.stream(job_id, payload, deadline=deadline)
             if deep and any(word in text for word in ('allocate', 'out of memory', 'terminated', 'cuda_host')):
                 # The deep model is installed but will not fit in memory right now. The fast
                 # brain with extended thinking is a real substitute, so say so and carry on
@@ -333,6 +415,10 @@ class Agent:
                     break
         if thinking:
             self.event(job_id, 'Reasoning', thinking[:1800])
+            # The whole chain, for the console. It is shown, never spoken.
+            with self.lock:
+                job = self.jobs[job_id]
+                job['reasoning'] = (job.get('reasoning', '') + thinking)[-40000:]
         if tool_calls:
             return {'role': 'assistant', 'content': content,
                     'tool_calls': [self.validate(call) for call in tool_calls]}

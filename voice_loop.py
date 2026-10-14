@@ -1027,6 +1027,25 @@ def build_brain(args):
             return responses.say_skill_busy(lang)
         return responses.say_skill_started(lang)
 
+    # Deep think (Day 22). Minutes, not seconds, so it runs in the background and comes
+    # back with the answer; JARVIS keeps listening meanwhile.
+    def think_deeply(text, lang):
+        try:
+            job_id = agent.start(text)
+        except ValueError:
+            return responses.say_still_thinking(lang)
+
+        def wait():
+            started = time.monotonic()
+            while agent.snapshot(job_id)['state'] in ('running', 'stopping'):
+                time.sleep(1)
+            job = agent.snapshot(job_id)
+            minutes = (time.monotonic() - started) / 60
+            print(f'  deep answer after {minutes:.1f} min ({job["state"]})', flush=True)
+            say_unprompted(responses.say_deep_answer(job, lang))
+        threading.Thread(target=wait, daemon=True, name='deep-think').start()
+        return responses.say_thinking_deeply(lang)
+
     RETRY_WORDS = ('retry', 'again', 'try again', 'ආයෙත්', 'නැවත', 'ayeth', 'aye')
     SKIP_WORDS = ('skip', 'මඟහරින්න', 'මගහරින්න', 'අතාරින්න', 'maga harinna')
 
@@ -1125,6 +1144,19 @@ def build_brain(args):
         pc_control.open_app(spoken)
         return responses.say_opened(app['name'].title(), lang)
 
+    def do_look(decision, lang):
+        """Day 15: the window in front, the screen, or the latest photo, read by the local
+        model. Captured into memory and never saved or sent anywhere."""
+        import vision
+        try:
+            seen = vision.look(decision['text'], lang, store)
+        except vision.VisionError as error:
+            print(f'  vision failed: {error}', file=sys.stderr)
+            return responses.say_cannot_see(str(error), lang)
+        print(f'  looked at {seen["shows"]} ({seen["size"]}, {seen["mode"]}, '
+              f'{seen["seconds"]}s)', flush=True)
+        return seen['answer']
+
     def do_lock(decision, lang):
         reply = responses.say_locking(lang)
         # Said before locking, or it is said to a locked screen.
@@ -1142,6 +1174,7 @@ def build_brain(args):
         'open_app': do_open_app,
         'lock_pc': do_lock,
         'read_messages': do_read_messages,
+        'look_screen': do_look,
     }
 
     # Commands answered from the live web. Each names the lookup and how to say it, so
@@ -1213,6 +1246,13 @@ def build_brain(args):
                     on_state('speaking')
                 speech.SPEAKER.say(task_reply)
             return task_reply
+
+        if agent.wants_deep(text):
+            reply = think_deeply(text, responses.language_of(text))
+            print(f'  JARVIS: {reply}', flush=True)
+            if speak:
+                speech.SPEAKER.say(reply)
+            return reply
 
         decision = command_router.route(text)
         print(f'  router: {decision["action"]} {decision.get("command")} '

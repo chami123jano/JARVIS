@@ -730,3 +730,38 @@ def say_skill_failed(skill, error, lang='si'):
     title = skill.get('title_en' if lang == 'en' else 'title_si') or skill.get('name', '')
     return (f'The {title} tool did not work. {error}' if lang == 'en'
             else f'{title} tool එක වැඩ කළේ නෑ.')
+
+
+# ---------------------------------------------------------------- deep think (Day 22)
+
+def say_thinking_deeply(lang='si'):
+    """Said at once, so the wait is expected rather than mistaken for a hang."""
+    if lang == 'en':
+        return ("I'll think about that properly and tell you in a few minutes. "
+                'Loading the deep brain unloads the quick one, so I will be slower until then.')
+    return ('හරි, ඒ ගැන හොඳට හිතලා විනාඩි කීපයකින් කියන්නම්. '
+            'ඒ වෙනකම් මම ටිකක් හෙමින් වැඩ කරන්නේ.')
+
+
+def say_still_thinking(lang='si'):
+    return ('I am still thinking about the last one.' if lang == 'en'
+            else 'කලින් එක ගැන තාම හිතනවා.')
+
+
+def say_deep_answer(job, lang='si'):
+    """The answer only. The reasoning is in the console, never read out."""
+    if job.get('state') == 'done' and str(job.get('answer', '')).strip():
+        lead = 'I have thought it through. ' if lang == 'en' else 'හිතලා බැලුවා. '
+        return lead + job['answer'].strip()
+    if job.get('state') == 'cancelled':
+        return 'I stopped thinking about it.' if lang == 'en' else 'ඒ ගැන හිතන එක නැවැත්තුවා.'
+    return ('I could not finish thinking that through. The console says why.' if lang == 'en'
+            else 'ඒක හිතලා ඉවර කරන්න බැරි වුණා. හේතුව console එකේ තියෙනවා.')
+
+
+# ---------------------------------------------------------------- seeing (Day 15)
+
+def say_cannot_see(reason, lang='si'):
+    if lang == 'en':
+        return f'I could not look at that. {reason}.'
+    return 'ඒක බලන්න බැරි වුණා.'

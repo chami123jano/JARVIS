@@ -266,3 +266,38 @@ def contains(haystack, needle):
         if SequenceMatcher(None, a[start:start + window], b).ratio() >= .8:
             return True
     return False
+
+
+# Endings a number takes in speech: පනහක් (fifty, "a fifty"), දහයට (at ten), දෙකකින්.
+NUMBER_ENDINGS = ('කින්', 'ක්', 'ට', 'යි', 'ක')
+
+
+def numbers_to_digits(text):
+    """Sinhala number words as digits: "රුපියල් පනහක්" -> "රුපියල් 50ක්".
+
+    Measured: asked to translate a question about fifty rupees, the fast model wrote
+    "one hundred", and the deep brain then answered the wrong question correctly. A digit
+    survives translation; a number word did not. "එක" is converted only inside a list of
+    numbers, because on its own it is usually "the" -- "ෆෝන් එක" is the phone, not one.
+    """
+    from responses import number_word
+    words = {number_word(n): n for n in range(0, 101)}
+
+    def value(token):
+        core = token.rstrip(',.?!')
+        for ending in ('',) + NUMBER_ENDINGS:
+            stem = core[:-len(ending)] if ending and core.endswith(ending) else core
+            if (ending == '' or core.endswith(ending)) and stem in words:
+                return words[stem], core[len(stem):], token[len(core):]
+        return None
+
+    tokens = str(text).split(' ')
+    found = [value(token) for token in tokens]
+    out = []
+    for index, (token, hit) in enumerate(zip(tokens, found)):
+        if hit and hit[0] == 1:
+            neighbours = [found[i] for i in (index - 1, index + 1) if 0 <= i < len(found)]
+            if not any(n and n[0] != 1 for n in neighbours):
+                hit = None
+        out.append(f'{hit[0]}{hit[1]}{hit[2]}' if hit else token)
+    return ' '.join(out)

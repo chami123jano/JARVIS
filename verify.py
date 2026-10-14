@@ -478,6 +478,21 @@ def notification_listener():
     return PASS, f'{count} notifications readable, allowlist and code guard hold'
 
 
+@check('day 27', 'Always on: service, autostart, Ollama')
+def always_on():
+    import jarvis_service as service
+    state = service.ollama_state()
+    if state != 'ok':
+        return FAIL, f'Ollama is {state}'
+    auto = service.autostart_status()
+    if not auto.get('enabled'):
+        return WARN, 'start at login is off - run install.ps1 to turn it on'
+    if not auto.get('current'):
+        return WARN, 'start at login points at an old location - re-run install.ps1'
+    running = 'running' if service.service_running() else 'not running now'
+    return PASS, f'Ollama ok, starts at login, service {running}'
+
+
 # ---------------------------------------------------------------- the server
 
 @check('setup', 'Server boots with every endpoint')
@@ -542,7 +557,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener]
+         live_knowledge, knowledge_offline, notification_listener, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

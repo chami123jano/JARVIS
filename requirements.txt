@@ -42,3 +42,6 @@ winrt-Windows.ApplicationModel>=3,<4
 # Machine control (Day 10): exact volume, and screenshots.
 pycaw>=20240000
 Pillow>=11,<14
+
+# The tray icon for the background service (Day 27).
+pystray>=0.19,<1

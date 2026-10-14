@@ -1220,6 +1220,32 @@ Generated code with your approval is a superpower; generated code without it is 
 
 ---
 
+#### ✅ Day 27 complete — built out of order, because nothing else is useful if JARVIS is not running
+
+`jarvis_service.py` owns everything that used to need a terminal left open:
+
+  - **Ollama** is started by the service with OLLAMA_MODELS read from the saved user
+    environment and passed explicitly, so the reboot-to-pick-up-the-path problem stops
+    mattering. When Ollama is found running from the wrong folder -- an empty model list,
+    which looks exactly like the models were lost -- it is stopped and restarted
+    correctly. Reproduced and repaired in 4.9 seconds.
+  - **The watchdog** restarts a crashed voice loop with backoff from one second, and
+    stops after five crashes in five minutes rather than looping for ever. Verified by
+    killing the voice loop: restarted in one second.
+  - **Ctrl+Alt+J mutes** by stopping the voice loop, so the microphone is closed rather
+    than ignored. Ctrl+Alt+M was the first choice and is owned by another program here,
+    so the first free shortcut from a list is used. Verified by pressing it for real.
+  - **A job object** ends the voice loop if the service is killed, so the microphone
+    never outlives the tray icon. Verified with a hard kill.
+  - **Start at login** through the user's own Run key: no admin rights, and it appears
+    in Task Manager under Startup apps where it can be switched off.
+  - **install.ps1** sets all of it up and reports each step; nine of nine passed.
+
+A lesson in checking: a process probe once reported orphaned voice loops after a kill.
+They were the probe itself, whose command text contained the words it was searching
+for. Matching by process tree rather than by command-line text gave the true answer,
+which was the opposite one.
+
 ### Day 27 — Always on
 
 **Goal:** it runs from boot and you stop thinking about starting it.

@@ -179,6 +179,18 @@ document.addEventListener('click', async event => {
   else { try { await api('records/update', {id:button.dataset.complete, action:'complete'}); await refresh(); } catch(error) { toast(error.message); } }
 });
 $('#confirmDelete').onclick = async () => { try { await api('records/update', {id:deleteId, action:'delete'}); $('#deleteDialog').close(); refresh(); } catch(error) { toast(error.message); } };
+// Multi-step tasks run in the voice loop; the console reads their journals and can stop them.
+function renderTasks(tasks) {
+  const bad = ['failed', 'skipped', 'not run'];
+  $('#taskList').innerHTML = tasks.length ? tasks.map(t => `<section class="job"><h3>${esc(t.request)} <span class="tiny-tag">${esc(t.state)}</span> ${['running','needs_you'].includes(t.state) ? `<button class="stop-button" data-stop-task="${esc(t.id)}">Stop</button>` : ''}</h3>${t.question ? `<p class="help">${esc(t.question)}</p>` : ''}${t.steps.map(s => `<details class="event ${bad.includes(s.state) ? 'error' : ''}"><summary><time>${esc(String(s.number))}</time>${esc(s.step)} &middot; ${esc(s.state)}</summary><pre>${esc(s.error || JSON.stringify(s.result ?? '', null, 1))}</pre></details>`).join('')}</section>`).join('') : '<p class="empty">Ask for several things in one sentence and the plan appears here.</p>';
+}
+async function refreshTasks() {
+  try { renderTasks((await api('tasks')).tasks || []); } catch (error) { /* the console still works without them */ }
+}
+document.addEventListener('click', event => {
+  const id = event.target.closest('[data-stop-task]')?.dataset.stopTask;
+  if (id) api('tasks/stop', {id}).then(() => toast('Stopping after the current step.')).catch(() => toast('Could not stop the task.'));
+});
 function renderActivity() {
   if (!state) return;
   const jobs = [...state.jobs].reverse();
@@ -250,6 +262,6 @@ function draw() {
   context.restore(); requestAnimationFrame(draw);
 }
 draw(); updateVoice(); voiceOptions(); icons(); view(['console','memory','activity','settings'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'console');
-refresh(true); setInterval(refresh,5000); setInterval(reminders,1000);
+refresh(true); setInterval(refresh,5000); setInterval(reminders,1000); refreshTasks(); setInterval(refreshTasks,3000);
 function updateClock() { $('#clock').textContent = new Date().toLocaleTimeString('en-GB'); }
 updateClock(); setInterval(updateClock,1000);

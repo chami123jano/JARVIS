@@ -119,9 +119,19 @@ class AssistantTests(AssistantBase):
             server.shutdown()
             server.server_close()
 
-
-if __name__ == '__main__':
-    unittest.main()
+    def test_a_refused_request_gets_a_403_not_a_reset(self):
+        """Refusing without reading the body made Windows reset 7 connections in 300."""
+        server = create_server(0, self.root / 'server-data')
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        url = f'http://127.0.0.1:{server.server_port}/api/records'
+        try:
+            for _ in range(150):
+                response = requests.post(url, json={'kind': 'note', 'title': 'x' * 60000},
+                                         timeout=5)
+                self.assertEqual(response.status_code, 403)
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 class ConcurrencyTests(unittest.TestCase):

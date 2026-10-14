@@ -992,6 +992,85 @@ def build_brain(args):
     proactive = daily.Routines(store, say_unprompted, busy=lambda: hooks['busy'](),
                                waiting_messages=lambda: len(inbox))
 
+    # Multi-step tasks (Day 20). The model writes the plan; tasks.Runner carries it out
+    # in the background, so JARVIS keeps listening -- for "stop" above all.
+    import tasks as multistep
+    asker = multistep.ollama_asker(store)
+    awaiting = {}           # a plan read out, waiting for a yes
+
+    def on_task_change(task):
+        current = next((s for s in task.steps if s['state'] in ('running', 'failed')), None)
+        if current:
+            print(f'  task step {current["number"]}/{len(task.steps)} '
+                  f'{current["state"]}: {current["step"]} {current["error"]}', flush=True)
+        data = task.as_dict()
+        if task.state == 'needs_you':
+            say_unprompted(responses.say_task_question(data, task.lang))
+        elif task.state in ('done', 'stopped', 'timed_out', 'failed'):
+            print(f'  task {task.state}: journal data/tasks/{task.id}.json', flush=True)
+            say_unprompted(responses.say_task_report(data, task.lang))
+
+    runner = multistep.Runner(
+        multistep.Steps(store, tools, ask_model=asker), on_change=on_task_change,
+        wall_clock=int(store.config('task_minutes', 5)) * 60)
+
+    RETRY_WORDS = ('retry', 'again', 'try again', 'ආයෙත්', 'නැවත', 'ayeth', 'aye')
+    SKIP_WORDS = ('skip', 'මඟහරින්න', 'මගහරින්න', 'අතාරින්න', 'maga harinna')
+
+    def handle_task(text, lang):
+        """A reply about a task, or None if this utterance is not about one."""
+        lowered = text.lower()
+        if runner.task and runner.task.state == 'needs_you':
+            if any(word in lowered for word in RETRY_WORDS):
+                runner.reply('retry')
+                return 'Trying again.' if lang == 'en' else 'හරි, ආයෙත් කරනවා.'
+            if any(word in lowered for word in SKIP_WORDS):
+                runner.reply('skip')
+                return 'Skipping it.' if lang == 'en' else 'හරි, ඒක මඟහරිනවා.'
+            if permissions.is_no(text):
+                runner.reply('stop')
+                return ''           # the report says how far it got
+            return responses.say_task_question(runner.task.as_dict(), lang)
+        if awaiting:
+            task = awaiting.pop('task')
+            if permissions.is_yes(text):
+                runner.start(task)
+                return ("Starting. I'll tell you when it's done." if lang == 'en'
+                        else 'හරි, පටන් ගන්නවා. ඉවර වුණාම කියන්නම්.')
+            # Declined, or something else entirely: the plan is dropped rather than
+            # trapping the conversation, and the journal says which.
+            task.state = 'declined' if permissions.is_no(text) else 'dropped'
+            task.save()
+            if task.state == 'declined':
+                return "All right, I won't." if lang == 'en' else 'හරි, කරන්නේ නෑ.'
+        decision = command_router.route(text)
+        command = decision.get('command') if decision['action'] == 'command' else None
+        # Only a clear "stop" ends a task. "නෑ" turns up in ordinary sentences, and a
+        # task stopped by a passing remark is a task half done.
+        if runner.busy() and command == 'stop':
+            runner.stop()
+            return ''
+        if command == 'task_status':
+            last = runner.task.as_dict() if runner.task else None
+            return responses.say_task_progress(last, lang)
+        if not multistep.looks_multi_step(text):
+            return None
+        if runner.busy():
+            return ('I am still on the last task. Say stop to end it.' if lang == 'en'
+                    else 'කලින් වැඩේ තාම කරනවා. නවත්වන්න කියන්න පුළුවන්.')
+        try:
+            steps = multistep.plan(text, asker)
+        except multistep.PlanError as error:
+            print(f'  no plan: {error}', file=sys.stderr)
+            return None             # the ordinary path may still manage it
+        task = multistep.Task(text, steps, lang)
+        task.save()
+        if multistep.needs_yes(steps):
+            awaiting['task'] = task
+            return responses.say_plan(task.steps, lang, ask=True)
+        runner.start(task)
+        return responses.say_plan(task.steps, lang)
+
     def do_read_messages(decision, lang):
         if not notifications.allowed_apps(store):
             return responses.say_notifications_off(lang)
@@ -1113,6 +1192,15 @@ def build_brain(args):
                 speech.SPEAKER.say(reply)
             return reply
 
+        task_reply = handle_task(text, responses.language_of(text))
+        if task_reply is not None:
+            print(f'  JARVIS: {task_reply[:200]}', flush=True)
+            if speak and task_reply:
+                if on_state:
+                    on_state('speaking')
+                speech.SPEAKER.say(task_reply)
+            return task_reply
+
         decision = command_router.route(text)
         print(f'  router: {decision["action"]} {decision.get("command")} '
               f'({decision.get("score")})', flush=True)
@@ -1230,6 +1318,7 @@ def build_brain(args):
 
     respond.hooks = hooks
     respond.routines = proactive
+    respond.runner = runner
     return respond, speech, start_watching
 
 

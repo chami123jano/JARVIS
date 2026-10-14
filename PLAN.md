@@ -1121,6 +1121,48 @@ Found by running it for real, against the real database:
 
 ---
 
+#### ✅ Day 20 complete — the invoice sentence, end to end, with a visible plan
+
+"Find every PDF invoice from last month, total them, save a summary, email it to me":
+five steps read out, a yes, then 4.8 seconds -- three September invoices found (one by
+its file date, having none printed), October's and a meeting-minutes PDF left out,
+LKR 72,210.20 totalled correctly, a summary table written, and a draft open in Outlook.
+The Sinhala sentence plans the same five steps.
+
+`tasks.py`. **The model writes the plan; code carries it out.** A 9B model driving a long
+tool loop itself loses its place and reports work it never did, so it only picks steps
+from a list of ten and fills in their inputs:
+
+  - **The plan is checked before anything runs**: real steps only, required inputs, each
+    "$n" pointing back at an earlier step, at most twelve steps. Inputs it invented are
+    dropped. The user's own words override it: asked for invoices from last month, the
+    model twice planned a search for every PDF, and would have totalled them.
+  - **Over three steps, or anything leaving the computer, is read out and waits for a
+    yes.** The plan is read from the steps themselves, not described by the model.
+  - **Totals are read by pattern**, Grand Total before Total, never Subtotal. When the
+    model is asked instead, its figure is believed only if it is printed in the document.
+  - **Background job with a journal** per task in data/tasks: every step's state,
+    attempts and result. Stop by voice ("නවත්වන්න") or from the console; what was
+    not run says "not run". "How is it going" answers from the journal.
+  - **Failures**: a network error is retried once, then JARVIS asks "retry, skip or stop?"
+    A step that needed a skipped one is skipped too, rather than run on nothing.
+  - **Limits**: twelve steps, five minutes of wall clock. Silence after a question
+    stops the task at the limit rather than waiting for ever.
+  - **Email** opens a draft (mailto, Outlook here); you press Send, as with WhatsApp.
+    Set `my_email` and the address is filled in.
+
+Found by running it for real:
+  - the first live run searched Documents and Downloads, not the folder it had been
+    given: the folder setting was read once when the voice loop started. Two purchase
+    indents from Downloads were counted -- they matched because "bill" was found inside
+    "billing". Folders are now read at each search, and words must stand alone;
+  - the model passed the summary only the total, so the file said "Total of 5" of
+    nothing. The summary now always includes every earlier result;
+  - the Sinhala "-ලා" chain ("හොයලා, එකතු කරලා") was never detected: `\b` does not
+    treat the vowel sign "ා" as part of a word;
+  - a long-standing intermittent test failure was a real server bug: refusing a request
+    without reading its body made Windows reset the connection -- 7 times in 300.
+
 ### Day 20 — Multi-step tasks
 
 **Goal:** one sentence, many steps, visible the whole way.

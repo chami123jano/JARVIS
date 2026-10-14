@@ -525,3 +525,171 @@ def say_missed(titles, lang='si'):
     if len(titles) == 1:
         return f'මම නැති වෙලාවේ මතක් කිරීමක් ගියා. {listed}.'
     return f'මම නැති වෙලාවේ මතක් කිරීම් {number_word(len(titles))}ක් ගියා. {listed}.'
+
+
+# ---------------------------------------------------------------- multi-step tasks (Day 20)
+
+ORDINALS = ['පළමුව', 'දෙවනුව', 'තෙවනුව', 'හතරවනුව', 'පස්වනුව', 'හයවනුව', 'හත්වනුව',
+            'අටවනුව', 'නවවනුව', 'දහවනුව', 'එකොළොස්වනුව', 'දොළොස්වනුව']
+ENGLISH_ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh',
+                    'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth']
+PERIOD_WORDS = {
+    'si': {'today': 'අද', 'yesterday': 'ඊයේ', 'this_week': 'මේ සතියේ',
+           'last_week': 'පසුගිය සතියේ', 'this_month': 'මේ මාසයේ', 'last_month': 'පසුගිය මාසයේ',
+           'this_year': 'මේ අවුරුද්දේ', 'last_year': 'පසුගිය අවුරුද්දේ', 'all': ''},
+    'en': {'today': "today's", 'yesterday': "yesterday's", 'this_week': "this week's",
+           'last_week': "last week's", 'this_month': "this month's",
+           'last_month': "last month's", 'this_year': "this year's",
+           'last_year': "last year's", 'all': 'all'},
+}
+SINHALA_WORDS = {'invoice': 'ඉන්වොයිස්', 'receipt': 'රිසිට්', 'bill': 'බිල්'}
+
+
+def ordinal(number, lang='si'):
+    table = ENGLISH_ORDINALS if lang == 'en' else ORDINALS
+    return table[number - 1] if 0 < number <= len(table) else str(number)
+
+
+def say_step(step, lang='si'):
+    """One planned step, as it will be read out. From the step itself, not the model."""
+    name, args = step['step'], step.get('args', {})
+    if name == 'find_documents':
+        kind = str(args.get('type', 'pdf') or '').upper().replace('ANY', '')
+        word = str(args.get('contains', '') or '')
+        when = PERIOD_WORDS[lang].get(args.get('period', 'all'), '')
+        if lang == 'en':
+            plural = word + 's' if word and not word.endswith('s') else word
+            return ' '.join(p for p in ['find', when, kind, plural or 'documents'] if p)
+        word = SINHALA_WORDS.get(word.lower(), word) or 'ලියකියවිලි'
+        return ' '.join(p for p in [when, kind, word, 'හොයනවා'] if p)
+    title = str(args.get('title', '') or '')
+    if lang == 'en':
+        return {'read_totals': 'read the total on each one', 'add_up': 'add them up',
+                'write_summary': 'write a summary and save it',
+                'email_me': 'put it in an email draft for you to send',
+                'save_note': f'save a note, {title}', 'set_reminder': f'set a reminder, {title}',
+                'weather': 'check the weather', 'dollar_rate': 'check the dollar rate',
+                'news': 'check the news'}.get(name, name)
+    return {'read_totals': 'හැම එකකම මුළු මුදල කියවනවා', 'add_up': 'ඒවා එකතු කරනවා',
+            'write_summary': 'සාරාංශයක් ලියලා සේව් කරනවා',
+            'email_me': 'ඊමේල් එකක් ලෑස්ති කරනවා, යවන්නේ ඔයා',
+            'save_note': f'සටහනක් සේව් කරනවා, {title}',
+            'set_reminder': f'මතක් කිරීමක් දානවා, {title}',
+            'weather': 'කාලගුණය බලනවා', 'dollar_rate': 'ඩොලර් රේට් එක බලනවා',
+            'news': 'පුවත් බලනවා'}.get(name, name)
+
+
+def say_plan(steps, lang='si', ask=False):
+    """The whole plan, read out in order, before anything is done."""
+    parts = [f'{ordinal(n, lang)}, {say_step(step, lang)}.' for n, step in enumerate(steps, 1)]
+    if lang == 'en':
+        head = f'That is {english_number(len(steps))} steps.' if len(steps) > 1 else 'One step.'
+        return ' '.join([head] + [p[0].upper() + p[1:] for p in parts]
+                        + (['Shall I go ahead?'] if ask else []))
+    head = f'මේක පියවර {number_word(len(steps))}කින් කරන්නම්.'
+    return ' '.join([head] + parts + (['කරන්නද?'] if ask else []))
+
+
+def say_amounts(totals, lang='si'):
+    spoken = []
+    for currency, amount in totals.items():
+        if currency == 'LKR':
+            spoken.append(money(amount, lang))
+        elif lang == 'en':
+            spoken.append(f'{amount:,.2f} {currency}')
+        else:
+            spoken.append({'USD': 'ඩොලර්', 'EUR': 'යුරෝ', 'GBP': 'පවුම්'}.get(currency, currency)
+                          + f' {amount:,.2f}')
+    return ', '.join(spoken)
+
+
+def say_step_result(step, lang='si'):
+    """What one finished step actually produced."""
+    name, result = step['step'], step.get('result') or {}
+    if name == 'find_documents':
+        count = len(result.get('files', []))
+        if lang == 'en':
+            return f'Found {english_number(count)}.' if count else 'Found none.'
+        return f'{number_word(count)}ක් හම්බවුණා.' if count else 'මොකුත් හම්බවුණේ නෑ.'
+    if name == 'read_totals':
+        missed = len(result.get('unreadable', []))
+        if not missed:
+            return ''
+        return (f'{english_number(missed).capitalize()} could not be read.' if lang == 'en'
+                else f'{number_word(missed)}ක මුදල කියවන්න බැරි වුණා.')
+    if name == 'add_up':
+        if not result.get('totals'):
+            return 'There was nothing to add up.' if lang == 'en' else 'එකතු කරන්න දෙයක් නෑ.'
+        amounts = say_amounts(result['totals'], lang)
+        return f'The total is {amounts}.' if lang == 'en' else f'එකතුව {amounts}.'
+    if name == 'write_summary':
+        return ('The summary is saved in the summaries folder.' if lang == 'en'
+                else 'සාරාංශය summaries ෆෝල්ඩර් එකේ සේව් කළා.')
+    if name == 'email_me':
+        if lang == 'en':
+            return ('The email is ready in your mail app. Press Send.' if result.get('to')
+                    else 'The email draft is open. Add your address and press Send.')
+        return ('ඊමේල් එක ලෑස්තියි. Send ඔබන්න.' if result.get('to')
+                else 'ඊමේල් draft එක open කළා. ඔයාගේ ලිපිනය දාලා Send ඔබන්න.')
+    if name == 'save_note':
+        return 'Note saved.' if lang == 'en' else 'සටහන සේව් කළා.'
+    if name == 'set_reminder':
+        return 'Reminder set.' if lang == 'en' else 'මතක් කිරීම දැම්මා.'
+    if name == 'weather' and result.get('temperature') is not None:
+        return say_weather(result, lang)
+    if name == 'dollar_rate' and result.get('rate'):
+        return say_dollar(result, lang)
+    if name == 'news':
+        return say_news(result.get('headlines', []), lang)
+    return ''
+
+
+def say_task_question(task, lang='si'):
+    """A step failed and was not fixed by a retry: what now?"""
+    failed = next((s for s in task['steps'] if s['state'] == 'failed'), None)
+    which = ordinal(failed['number'], lang) if failed else ''
+    if lang == 'en':
+        return (f'The {which} step failed: {task.get("question", "")}. '
+                'Shall I retry, skip it, or stop?')
+    return (f'{which} පියවර වැඩ කළේ නෑ: {task.get("question", "")}. '
+            'ආයෙත් කරන්නද, මඟහරින්නද, නවත්වන්නද?')
+
+
+def say_task_report(task, lang='si'):
+    """How it ended, built only from the journal."""
+    lines = [say_step_result(s, lang) for s in task['steps'] if s['state'] == 'done']
+    for step in task['steps']:
+        if step['state'] in ('failed', 'skipped'):
+            which = ordinal(step['number'], lang)
+            lines.append(f'The {which} step was skipped.' if lang == 'en'
+                         else f'{which} පියවර කළේ නෑ.')
+    done = sum(1 for s in task['steps'] if s['state'] == 'done')
+    total = len(task['steps'])
+    if task['state'] == 'stopped':
+        lines.append(f'Stopped after {english_number(done)} of {english_number(total)} steps.'
+                     if lang == 'en' else
+                     f'නැවැත්තුවා. පියවර {number_word(total)}න් {number_word(done)}ක් කළා.')
+    elif task['state'] == 'timed_out':
+        lines.append(f'I ran out of time after {english_number(done)} steps.' if lang == 'en'
+                     else f'වෙලාව ඉවරයි. පියවර {number_word(done)}ක් විතරයි කළේ.')
+    elif task['state'] == 'failed':
+        lines.append('Something went wrong, and I stopped.' if lang == 'en'
+                     else 'මොකක් හරි වැරදුණා, ඒ නිසා නැවැත්තුවා.')
+    elif task['state'] == 'done' and not any(lines):
+        lines.append('Done.' if lang == 'en' else 'හරි, කළා.')
+    return ' '.join(line for line in lines if line)
+
+
+def say_task_progress(task, lang='si'):
+    """'How is it going?' -- which step, of how many."""
+    if not task:
+        return 'Nothing is running.' if lang == 'en' else 'දැන් කරන වැඩක් නෑ.'
+    total = len(task['steps'])
+    current = next((s for s in task['steps'] if s['state'] in ('running', 'failed')), None)
+    if task['state'] not in ('running', 'needs_you') or not current:
+        return say_task_report(task, lang)
+    if lang == 'en':
+        return (f'On step {english_number(current["number"])} of {english_number(total)}: '
+                f'{say_step(current, lang)}.')
+    return (f'පියවර {number_word(total)}න් {ordinal(current["number"])}: '
+            f'{say_step(current, lang)}.')

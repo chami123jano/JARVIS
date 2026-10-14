@@ -122,6 +122,11 @@ COMMANDS = {
         'ada vistara kiyanna', 'davase vistara kiyanna', 'suba udesanak',
         'briefing eka denna', 'brief me', 'morning briefing', 'good morning',
     ],
+    'task_status': [
+        'වැඩේ කොහොමද', 'වැඩේ කොච්චර දුර ගියාද', 'ඉවරද', 'වැඩේ ඉවරද',
+        'vade kohomada', 'vade ivarada', 'how is it going', 'are you done',
+        'whats the progress',
+    ],
     'stop': [
         'නවත්වන්න', 'නිශ්ශබ්ද වෙන්න',
         'navathvanna', 'nishshabda venna', 'stop talking', 'be quiet',

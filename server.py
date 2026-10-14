@@ -180,18 +180,37 @@ def create_server(port=4190, data_dir=None):
                                       'jobs': [agent.snapshot(key) for key in list(agent.jobs)]})
                 if path.startswith('/api/jobs/'):
                     return self.send(agent.snapshot(path.rsplit('/', 1)[-1]))
-                file = (web / (path.lstrip('/') or 'index.html')).resolve()
+                if path == '/api/tasks':
+                    # Multi-step tasks run in the voice loop; their journals are files.
+                    import tasks
+                    return self.send({'tasks': tasks.recent(15)})
+                file =(web / (path.lstrip('/') or 'index.html')).resolve()
                 if not file.is_relative_to(web) or not file.is_file():
                     return self.send({'error': 'Not found'}, 404)
                 return self.send(file.read_bytes(), content_type=mimetypes.guess_type(file)[0] or 'application/octet-stream')
             except KeyError:
                 self.send({'error': 'Job not found'}, 404)
 
+        def refuse(self, message):
+            """Reject a POST, after reading its body.
+
+            Closing a socket with the request body still unread makes Windows reset the
+            connection, so the caller saw "connection aborted" instead of the 403 --
+            intermittently, which is why the server test failed one run in four.
+            """
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+                if 0 < size <= 120000:
+                    self.rfile.read(size)
+            except (ValueError, OSError):
+                pass
+            return self.send({'error': message}, 403)
+
         def do_POST(self):
             if not self.allowed() or self.headers.get('X-Jarvis-Token') != token:
-                return self.send({'error': 'Invalid session'}, 403)
+                return self.refuse('Invalid session')
             if self.headers.get('Origin') not in (None, f'http://localhost:{self.server.server_port}', f'http://127.0.0.1:{self.server.server_port}'):
-                return self.send({'error': 'Invalid origin'}, 403)
+                return self.refuse('Invalid origin')
             try:
                 size = int(self.headers.get('Content-Length', '0'))
                 if not 0 < size <= 120000:
@@ -227,6 +246,9 @@ def create_server(port=4190, data_dir=None):
                     return self.send(store.add(body['kind'], body['title'], body.get('content', ''), body.get('due')))
                 if path == '/api/records/update':
                     return self.send(store.update(body['id'], body['action']))
+                if path == '/api/tasks/stop':
+                    import tasks
+                    return self.send(tasks.request_stop(body['id']))
                 if path == '/api/settings':
                     if any(job['state'] in ('running', 'stopping') for job in agent.jobs.values()):
                         raise ValueError('Wait for the active request before changing settings')

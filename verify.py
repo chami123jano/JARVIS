@@ -505,6 +505,43 @@ def speaks_first():
                   f'{config["quiet_hours"][0]}-{config["quiet_hours"][1]}, reminders fire')
 
 
+@check('day 20', 'Multi-step tasks: plan checked, steps run, totals read')
+def multi_step():
+    import datetime as dt
+    import tempfile
+    import tasks
+    sys.path.insert(0, str(ROOT / 'tests'))
+    from pdf_fixture import invoice
+    from assistant_core import Store, Tools
+    try:
+        tasks.validate([{'step': 'run_shell', 'args': {}}])
+        return FAIL, 'a plan with an unknown step was accepted'
+    except tasks.PlanError:
+        pass
+    with tempfile.TemporaryDirectory() as folder:
+        folder = Path(folder)
+        store = Store(folder / 'check.db')
+        steps = tasks.Steps(store, Tools(store, folder / 'workspace'), folders=[folder / 'in'])
+        start, _ = tasks.period_range('last_month')
+        invoice(folder / 'in' / 'a.pdf', 'A1', (start + dt.timedelta(days=3)).isoformat(),
+                [('Paper', 1000)], 1180)
+        invoice(folder / 'in' / 'b.pdf', 'B1', dt.date.today().isoformat(), [('Ink', 500)], 590)
+        plan = tasks.validate([
+            {'step': 'find_documents', 'args': {'type': 'pdf', 'period': 'last_month',
+                                                'contains': 'invoice'}},
+            {'step': 'read_totals', 'args': {'files': '$1'}},
+            {'step': 'add_up', 'args': {'items': '$2'}}])
+        task = tasks.Task('check', plan, 'en')
+        tasks.Runner(steps, folder=folder / 'journal').start(task).join(30)
+        if task.state != 'done':
+            return FAIL, f'the task ended {task.state}'
+        totals = task.steps[2]['result']['totals']
+        if totals != {'LKR': 1180.0}:
+            return FAIL, f'expected LKR 1,180.00 from last month only, got {totals}'
+    return PASS, (f'plans checked, steps ran, last month totalled; limits '
+                  f'{tasks.STEP_LIMIT} steps, {tasks.WALL_CLOCK_SECONDS // 60} minutes')
+
+
 @check('day 27', 'Always on: service, autostart, Ollama')
 def always_on():
     import jarvis_service as service
@@ -584,7 +621,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

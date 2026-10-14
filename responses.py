@@ -146,10 +146,10 @@ def clock(moment=None):
     return f'{when} {hour_word}යි {number_word(minute)}යි'
 
 
-def say_time(_tools=None, _result=None, lang='si'):
+def say_time(_tools=None, _result=None, lang='si', moment=None):
     if lang == 'en':
-        return f'It is {english_clock()}.'
-    return f'දැන් වෙලාව {clock()}.'
+        return f'It is {english_clock(moment)}.'
+    return f'දැන් වෙලාව {clock(moment)}.'
 
 
 def say_battery(result, lang='si'):
@@ -251,11 +251,13 @@ def say_need_detail(what, lang='si'):
     if lang == 'en':
         return {'message': 'Who should I send it to, and what should it say?',
                 'note': 'What should the note say?',
-                'time': 'When should I remind you?',
+                'time': 'When should I remind you? Say morning or night as well.',
+                'reminder': 'What should I remind you of?',
                 'app': 'Which application?'}.get(what, 'Tell me a little more.')
     return {'message': 'කාටද මැසේජ් එක යවන්නේ? මොකක්ද කියන්න ඕනේ?',
             'note': 'මොකක්ද සටහන් කරන්නේ?',
-            'time': 'කීයටද මතක් කරන්නේ?',
+            'time': 'කීයටද මතක් කරන්නේ? උදේද රෑද කියලත් කියන්න.',
+            'reminder': 'මොකක්ද මතක් කරන්නේ?',
             'app': 'මොන ඇප් එකද ඕපන් කරන්නේ?'}.get(what, 'ටිකක් විස්තර කියන්න.')
 
 
@@ -407,3 +409,119 @@ def say_notifications_off(lang='si'):
         return ('No applications are allowed to notify me yet. '
                 'Add one with notifications.py --allow WhatsApp.')
     return 'තාම මොන ඇප් එකකටවත් අවසර දීලා නෑ.'
+
+
+# ---------------------------------------------------------------- speaking first (Day 19)
+
+def clock_at(moment):
+    """'රෑ දහයට' -- the time something happens at, rather than the time it is.
+
+    clock() ends in 'යි', and adding the dative to that gives "දහයයිට", which is not
+    Sinhala. The dative goes on the last number word instead.
+    """
+    hour = moment.hour % 12 or 12
+    minute = moment.minute
+    when, hour_word = period(moment.hour), number_word(hour)
+    if minute == 0:
+        return f'{when} {hour_word}ට'
+    if minute == 30:
+        return f'{when} {hour_word}හමාරට'
+    return f'{when} {hour_word}යි {number_word(minute)}ට'
+
+
+def english_at(moment):
+    return f'at {english_clock(moment)}'
+
+
+def say_greeting(moment=None, lang='si'):
+    hour = (moment or dt.datetime.now()).hour
+    if lang == 'en':
+        return ('Good morning.' if hour < 12 else 'Good afternoon.' if hour < 18
+                else 'Good evening.')
+    return 'සුබ උදෑසනක්.' if hour < 12 else 'ආයුබෝවන්.'
+
+
+def say_today(reminders, routines, lang='si'):
+    """What is left to do today, from reminders and routines together."""
+    items = list(dict.fromkeys(list(reminders) + list(routines)))
+    if not items:
+        return 'Nothing is scheduled for today.' if lang == 'en' else 'අද කරන්න දෙයක් දාලා නෑ.'
+    listed = '. '.join(items[:3])
+    if lang == 'en':
+        if len(items) == 1:
+            return f'One thing today. {listed}.'
+        return f'{english_number(len(items)).capitalize()} things today. {listed}.'
+    if len(items) == 1:
+        return f'අද එක දෙයක් තියෙනවා. {listed}.'
+    return f'අද කරන්න දේවල් {number_word(len(items))}ක් තියෙනවා. {listed}.'
+
+
+def say_messages_waiting(count, lang='si'):
+    if lang == 'en':
+        return ('One message is waiting.' if count == 1 else
+                f'{english_number(count).capitalize()} messages are waiting.')
+    return ('මැසේජ් එකක් ඇවිත් තියෙනවා.' if count == 1 else
+            f'මැසේජ් {number_word(count)}ක් ඇවිත් තියෙනවා.')
+
+
+def say_reminder_due(title, late=False, lang='si'):
+    if lang == 'en':
+        return (f'You asked me to remind you earlier. {title}.' if late
+                else f'Reminder. {title}.')
+    return (f'මතක් කරන්න තිබුණු දෙයක්. {title}.' if late
+            else f'මතක් කිරීමක්. {title}.')
+
+
+def say_routine_set(title, at, lang='si'):
+    moment = dt.datetime.combine(dt.date.today(), at)
+    if lang == 'en':
+        return f"Right. Every day {english_at(moment)} I'll remind you. {title}."
+    return f'හරි. හැමදාම {clock_at(moment)} මතක් කරන්නම්. {title}.'
+
+
+def say_reminder_at(title, moment, lang='si'):
+    """A one-off reminder at a clock time, rather than after a delay."""
+    tomorrow = moment.date() != dt.date.today()
+    if lang == 'en':
+        day = ' tomorrow' if tomorrow else ''
+        return f"Right. I'll remind you{day} {english_at(moment)}." + (f' {title}.' if title else '')
+    day = 'හෙට ' if tomorrow else ''
+    return f'හරි. {day}{clock_at(moment)} මතක් කරන්නම්.' + (f' {title}.' if title else '')
+
+
+def say_briefing_time_set(at, lang='si'):
+    moment = dt.datetime.combine(dt.date.today(), at)
+    if lang == 'en':
+        return f"Right. I'll brief you every day {english_at(moment)}."
+    return f'හරි. හැමදාම {clock_at(moment)} දවසේ විස්තර කියන්නම්.'
+
+
+def say_battery_low(level, lang='si'):
+    if lang == 'en':
+        return f'The battery is down to {english_number(level)} percent. Plug in the charger.'
+    return f'බැටරිය {percent(level)}යි. චාජර් එක ගහන්න.'
+
+
+def say_disk_full(used, lang='si'):
+    if lang == 'en':
+        return f'The disk is {english_number(used)} percent full.'
+    return f'තැටිය {percent(used)}ක් පිරිලා. ඉඩ හදන්න ඕනේ.'
+
+
+def say_cpu_busy(lang='si'):
+    if lang == 'en':
+        return 'The processor has been at full load for five minutes. Something may be stuck.'
+    return 'සීපීයූ එක මිනිත්තු පහක් තිස්සේ උපරිමෙන් වැඩ. මොකක් හරි හිරවෙලා වගේ.'
+
+
+def say_missed(titles, lang='si'):
+    """Reminders that came due while JARVIS was off for a day or more."""
+    listed = '. '.join(titles[:2])
+    if lang == 'en':
+        if len(titles) == 1:
+            return f'While I was off, a reminder came and went. {listed}.'
+        return (f'While I was off, {english_number(len(titles))} reminders came and went. '
+                f'{listed}.')
+    if len(titles) == 1:
+        return f'මම නැති වෙලාවේ මතක් කිරීමක් ගියා. {listed}.'
+    return f'මම නැති වෙලාවේ මතක් කිරීම් {number_word(len(titles))}ක් ගියා. {listed}.'

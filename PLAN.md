@@ -1067,6 +1067,40 @@ is NOT done.
 
 ## PHASE F — Autonomy (Days 19–23)
 
+#### ✅ Day 19 complete — built after Day 27, because speaking first needs something always running
+
+`routines.py` runs a clock inside the voice loop, so it lives in the background service:
+
+  - **Reminders fire with the console closed**, spoken and then marked done -- never
+    marked done unheard. One set for 3 a.m. fires at 3 a.m. A late one says it is late;
+    a backlog more than a day old is summed up in one sentence.
+  - **The morning briefing** at 07:30 by default: greeting, time, weather, what is on
+    today, waiting messages, the dollar rate, three headlines. Online parts fetched in
+    parallel and dropped one at a time when offline. A computer that wakes late still
+    briefs, up to three hours late. "අද විස්තර කියන්න" or "සුබ උදෑසනක්" gives it on
+    demand; "උදේ හයහමාරට බ්‍රීෆිං එක දෙන්න" sets the time.
+  - **Routines in plain Sinhala**: "හැමදාම රෑ දහයට ෆෝන් එක චාජ් කරන්න මතක් කරන්න".
+    Clock times are understood -- "රෑ දහයට", "උදේ හතහමාරට", "7 am", "heta ude atata"
+    -- but "දහයට" alone is asked about, not guessed: a guess is twelve hours wrong.
+  - **Quiet hours** (22:30-06:30) and **an hourly limit** (four) apply only to what
+    JARVIS thinks of itself: battery under 20% unplugged, disk over 90%, messages.
+    What you asked for -- reminders, routines, the briefing -- always happens.
+    Messages held at night are not lost; they are in the briefing.
+  - It never talks over you: mid-command, whatever is due waits for the next tick.
+
+Not done, and why: **CPU temperature** -- Windows will not report it without
+administrator rights, so the watcher looks for the cause instead, the processor at full
+load for five minutes. **Important email** -- there is no email access yet.
+
+Found by running it for real, against the real database:
+  - three reminders left over from earlier testing fired the moment the clock started,
+    one after another -- hence the one-sentence summary for old ones;
+  - a full disk found at 1 a.m. was held for quiet hours and marked as warned anyway, so
+    it would never have been said in the morning. Warnings now count only once spoken;
+  - "මිනිත්තු එකකින් වතුර බොන්න" saved the reminder as "එකකින් වතුර බොන්න", and
+    "පැය" (hour) was not known at all;
+  - a news headline arrived as "Yemen&apos;s", which a voice reads out literally.
+
 ### Day 19 — Proactive JARVIS
 
 **Goal:** it speaks first when something is worth saying.

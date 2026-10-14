@@ -132,6 +132,15 @@ class SpokenTests(unittest.TestCase):
                 for bad in ('*', '- ', '#', 'http', '|'):
                     self.assertNotIn(bad, spoken)
 
+    def test_headlines_are_unescaped(self):
+        """Seen live in the first real briefing: "Yemen&apos;s Houthis"."""
+        feed = ('<rss><title>Feed</title><item><title>Yemen&apos;s Houthis vow more '
+                'attacks &amp; more</title></item></rss>')
+        with patch.object(knowledge, 'cached', lambda kind, key, build: build()), \
+                patch.object(knowledge, 'fetch', return_value=feed):
+            title = knowledge.news(limit=1)[0]['title']
+        self.assertEqual(title, "Yemen's Houthis vow more attacks & more")
+
     def test_no_news_says_so(self):
         self.assertIn('නැහැ', responses.say_news([], 'si'))
         self.assertIn('No news', responses.say_news([], 'en'))

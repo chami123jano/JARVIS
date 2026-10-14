@@ -12,6 +12,7 @@ so a fact can be told apart from an invention.
     python knowledge.py --news
 """
 import argparse
+import html
 import json
 import re
 import sys
@@ -174,7 +175,8 @@ def news(limit=3):
             titles = re.findall(r'<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>', body,
                                 re.S)[1:limit + 1]
             for title in titles:
-                text = re.sub(r'<[^>]+>', '', title).strip()
+                # Feeds escape apostrophes as "&apos;", which a voice reads out literally.
+                text = html.unescape(re.sub(r'<[^>]+>', '', title)).strip()
                 if text and len(text) > 12:
                     headlines.append({'title': text[:180], 'source': name})
                 if len(headlines) >= limit:

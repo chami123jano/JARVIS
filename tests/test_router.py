@@ -110,8 +110,20 @@ class DurationTests(unittest.TestCase):
                 self.assertIsNone(extract_duration(text))
 
     def test_a_reminder_without_a_time_is_handed_to_the_model(self):
-        outcome = route('heta ude atata mathak karanna')
+        outcome = route('heta mathak karanna')
         self.assertNotEqual(outcome['action'], 'command')
+
+    def test_tomorrow_at_a_clock_time(self):
+        """Once handed to the model; now a time it understands, on the right day."""
+        import datetime as dt
+        outcome = route('heta ude atata mathak karanna')
+        self.assertEqual(outcome['action'], 'command')
+        now = dt.datetime.now()
+        due = now + dt.timedelta(seconds=outcome['seconds'] + 5)
+        # Before four in the morning "tomorrow" means the morning after you sleep.
+        expected = now.date() + dt.timedelta(days=0 if now.hour < 4 else 1)
+        self.assertEqual(due.date(), expected)
+        self.assertEqual(due.hour, 8)
 
 
 if __name__ == '__main__':

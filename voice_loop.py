@@ -975,8 +975,22 @@ def build_brain(args):
     import permissions
     import responses
 
+    import routines as daily
+
     # Messages heard about but not yet read out. Held so "මොනවද ආවේ" can answer.
     inbox = []
+
+    # Set by the wake loop: whether the user is mid-command, and what JARVIS last said,
+    # so a remark JARVIS makes on its own is neither said over you nor heard as you.
+    hooks = {'busy': lambda: speech.SPEAKER.speaking, 'spoken': lambda text: None}
+
+    def say_unprompted(text):
+        hooks['spoken'](text)
+        if not args.silent:
+            speech.SPEAKER.say(text)
+
+    proactive = daily.Routines(store, say_unprompted, busy=lambda: hooks['busy'](),
+                               waiting_messages=lambda: len(inbox))
 
     def do_read_messages(decision, lang):
         if not notifications.allowed_apps(store):
@@ -986,7 +1000,9 @@ def build_brain(args):
         return responses.say_recent_messages(recent, lang)
 
     def start_watching():
-        """Announce arriving messages, if an application has been allowed."""
+        """Start speaking first: reminders and routines, and arriving messages."""
+        if not getattr(proactive, 'thread', None):
+            proactive.thread = proactive.start()
         if not notifications.allowed_apps(store):
             return None
         if not notifications.available():
@@ -995,11 +1011,12 @@ def build_brain(args):
         watcher = notifications.Watcher(store)
 
         def announce(message):
+            # Kept whether or not it is said, so quiet hours lose nothing: it is in the
+            # morning briefing and in "මොනවද ආවේ".
             inbox.append(message)
             print(f'\n  * {message["shown"][:90]}', flush=True)
             print(f'  JARVIS: {message["spoken"][:90]}', flush=True)
-            if not args.silent:
-                speech.SPEAKER.say(message['spoken'])
+            proactive.remark('message', message['spoken'])
 
         thread = threading.Thread(
             target=lambda: watcher.watch(announce, store.config('reply_language', 'si')),
@@ -1160,6 +1177,20 @@ def build_brain(args):
             except Exception as error:
                 print(f'  direct answer failed: {error}', file=sys.stderr)
                 reply = responses.say_not_understood(lang)
+        elif decision['action'] == 'command' and decision['command'] == 'briefing':
+            if decision.get('at'):
+                store.set_config('briefing_time', decision['at'].strftime('%H:%M'))
+                store.set_config('briefing_enabled', True)
+                reply = responses.say_briefing_time_set(decision['at'], lang)
+            else:
+                reply = daily.briefing(store, lang, waiting_messages=len(inbox))
+        elif decision['action'] == 'command' and decision['command'] == 'routine':
+            try:
+                routine = daily.add_routine(store, decision['at'], decision['content'])
+                reply = responses.say_routine_set(routine['title'], decision['at'], lang)
+            except Exception as error:
+                print(f'  routine failed: {error}', file=sys.stderr)
+                reply = responses.say_failed('reminder', lang)
         elif decision['action'] == 'command' and decision['command'] == 'reminder' \
                 and decision.get('seconds'):
             try:
@@ -1169,8 +1200,12 @@ def build_brain(args):
                 # දහයකින් මතක් කරන්න" tells you nothing when it fires.
                 title = decision.get('content') or decision['text']
                 tools.execute('set_reminder', {'title': title, 'due': due})
-                reply = responses.say_reminder_set(decision.get('content', ''),
-                                                   decision['seconds'], lang)
+                if decision.get('at'):
+                    reply = responses.say_reminder_at(decision.get('content', ''),
+                                                      dt.datetime.fromisoformat(due), lang)
+                else:
+                    reply = responses.say_reminder_set(decision.get('content', ''),
+                                                       decision['seconds'], lang)
             except Exception as error:
                 print(f'  reminder failed: {error}', file=sys.stderr)
                 reply = responses.say_failed('reminder', lang)
@@ -1193,6 +1228,8 @@ def build_brain(args):
             speech.SPEAKER.say(reply)
         return reply
 
+    respond.hooks = hooks
+    respond.routines = proactive
     return respond, speech, start_watching
 
 
@@ -1248,6 +1285,14 @@ def wake_loop(args):
     def on_command(text):
         reply = respond(text, speak=not args.silent, on_state=listener.set_state)
         listener.last_reply = reply or ''
+
+    def spoken(text):
+        listener.last_reply = text
+
+    # Mid-command, a reminder waits for the next tick rather than talking over you.
+    respond.hooks.update(
+        busy=lambda: listener.state != 'idle' or speech.SPEAKER.speaking,
+        spoken=spoken)
 
     listener.on_state = lambda state: print(f'  [{state}]', flush=True) if args.verbose else None
     # Barge-in means listening while the speakers are playing, which without echo

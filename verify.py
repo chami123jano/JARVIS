@@ -478,6 +478,33 @@ def notification_listener():
     return PASS, f'{count} notifications readable, allowlist and code guard hold'
 
 
+@check('day 19', 'Speaks first: reminders, briefing, quiet hours')
+def speaks_first():
+    import datetime as dt
+    import tempfile
+    import routines
+    from assistant_core import ROOT as CORE_ROOT, Store
+    config = routines.settings(Store(CORE_ROOT / 'data' / 'jarvis.db'))
+    routines.parse_hhmm(config['briefing_time'])
+    [routines.parse_hhmm(t) for t in config['quiet_hours']]
+    # A reminder due now is said and marked done, on a throwaway database.
+    with tempfile.TemporaryDirectory() as folder:
+        store = Store(Path(folder) / 'check.db')
+        store.set_config('briefing_enabled', False)
+        now = dt.datetime.now().astimezone()
+        store.add('reminder', 'check', due=(now - dt.timedelta(seconds=1)).isoformat())
+        said = []
+        routines.Routines(store, said.append, battery=lambda: None, disk=lambda: 0,
+                          cpu=lambda: 0).tick(now)
+        if not said or not store.records()[0]['done']:
+            return FAIL, 'a due reminder was not said'
+        text = routines.briefing(store, 'si', now)
+    if 'අංශක' not in text:
+        return WARN, 'briefing works, but without the weather (offline?)'
+    return PASS, (f'briefing at {config["briefing_time"]}, quiet '
+                  f'{config["quiet_hours"][0]}-{config["quiet_hours"][1]}, reminders fire')
+
+
 @check('day 27', 'Always on: service, autostart, Ollama')
 def always_on():
     import jarvis_service as service
@@ -557,7 +584,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

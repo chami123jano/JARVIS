@@ -117,6 +117,11 @@ COMMANDS = {
         'monavada ave', 'message monavada ave', 'kavuda message kale',
         'what messages came', 'any messages', 'who messaged me',
     ],
+    'briefing': [
+        'අද විස්තර කියන්න', 'දවසේ විස්තර කියන්න', 'සුබ උදෑසනක්', 'බ්‍රීෆිං එක දෙන්න',
+        'ada vistara kiyanna', 'davase vistara kiyanna', 'suba udesanak',
+        'briefing eka denna', 'brief me', 'morning briefing', 'good morning',
+    ],
     'stop': [
         'නවත්වන්න', 'නිශ්ශබ්ද වෙන්න',
         'navathvanna', 'nishshabda venna', 'stop talking', 'be quiet',
@@ -143,7 +148,7 @@ NUMBERS = {
 }
 UNITS = {
     'minit': 60, 'minitthu': 60, 'minute': 60, 'minutes': 60, 'vinadi': 60,
-    'pava': 3600, 'hour': 3600, 'hours': 3600,
+    'pava': 3600, 'පැය': 3600, 'paya': 3600, 'hour': 3600, 'hours': 3600,
     'thappara': 1, 'second': 1, 'seconds': 1,
 }
 
@@ -172,6 +177,10 @@ def phrase_score(text, phrase):
 KEYWORDS = {
     'open_app': ['open', 'ඕපන්', 'විවෘත', 'launch', 'oapan'],
     'play_music': ['sinduwak', 'සින්දුවක්', 'සිංදු'],
+    'briefing': ['බ්‍රීෆිං', 'briefing'],
+    # A routine opens with its time -- "හැමදාම රෑ දහයට ... මතක් කරන්න" -- so the head of
+    # the sentence looks like no phrasing, and the order is only in the verb.
+    'reminder': ['මතක්', 'mathak', 'remind'],
 }
 KEYWORD_FLOOR = .78
 
@@ -254,6 +263,9 @@ def extract_duration(text):
                 if len(found) > 1:
                     return None
                 amount = found[0] if found else None
+                # "පැයකින්", in an hour: the one is in the ending, not a separate word.
+                if amount is None and word.endswith('akin'):
+                    amount = 1
             break
     if amount and unit:
         total = amount * unit
@@ -262,12 +274,137 @@ def extract_duration(text):
     return None
 
 
+# Clock times, for "රෑ දහයට" (at ten at night). The hour carries the dative 'ට', which
+# is what separates "at ten" from "ten" -- and from "එක" (one), which is also "the".
+HOURS_AT = {
+    'එකට': 1, 'දෙකට': 2, 'තුනට': 3, 'හතරට': 4, 'පහට': 5, 'හයට': 6, 'හතට': 7,
+    'අටට': 8, 'නමයට': 9, 'නවයට': 9, 'දහයට': 10, 'එකොළහට': 11, 'දොළහට': 12,
+    'ekata': 1, 'dekata': 2, 'thunata': 3, 'hatharata': 4, 'pahata': 5, 'hayata': 6,
+    'hathata': 7, 'atata': 8, 'namayata': 9, 'navayata': 9, 'dahayata': 10,
+    'ekolahata': 11, 'dolahata': 12,
+}
+ENGLISH_HOURS = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6,
+                 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11, 'twelve': 12}
+# Which part of the day, which decides am or pm.
+PERIODS = {
+    'උදේ': 'morning', 'උදේට': 'morning', 'උදේම': 'morning', 'උදෑසන': 'morning',
+    'පාන්දර': 'morning', 'අලුයම': 'morning',
+    'දවල්': 'midday', 'දවල්ට': 'midday', 'දහවල්': 'midday',
+    'හවස': 'evening', 'හවසට': 'evening', 'හවසම': 'evening', 'සවස': 'evening',
+    'රෑ': 'night', 'රෑට': 'night', 'රෑම': 'night', 'රාත්‍රී': 'night',
+    'ude': 'morning', 'udeta': 'morning', 'daval': 'midday', 'havasa': 'evening',
+    'rae': 'night', 'raa': 'night',
+    'am': 'morning', 'morning': 'morning', 'pm': 'evening', 'afternoon': 'evening',
+    'evening': 'evening', 'night': 'night', 'tonight': 'night',
+}
+# "Every day". Its presence is what makes a reminder a routine.
+DAILY = ['හැමදාම', 'හැමදාමත්', 'හැම', 'දිනපතා', 'hamadama', 'hama', 'every', 'daily']
+HALF = 'hamara'
+
+
+def _table(table):
+    """A word table keyed by its romanized form, so every script meets in one place."""
+    return {normalize(key).replace(' ', ''): value for key, value in table.items()}
+
+
+def to_24_hour(hour, minute, part):
+    if part == 'morning':
+        return hour % 12            # 12 am is midnight
+    if part == 'midday':
+        return hour + 12 if hour < 6 else hour
+    if part == 'evening':
+        return hour + 12 if hour < 12 else hour
+    if part == 'night':
+        if hour == 12:
+            return 0
+        return hour if hour < 5 else (hour + 12 if hour < 12 else hour)
+    return hour
+
+
+def extract_clock(text):
+    """A time of day in the sentence: (datetime.time, words it used), or None.
+
+    Without a part of the day, "දහයට" could be ten in the morning or at night. Guessing
+    sets a reminder twelve hours wrong without a word, so only a 24-hour figure such as
+    "22:00" stands alone; otherwise the caller asks.
+    """
+    hours, periods = _table(HOURS_AT), _table(PERIODS)
+    tokens = str(text).split()
+    hour = minute = part = None
+    used = set()
+    for index, token in enumerate(tokens):
+        word = normalize(token).replace(' ', '')
+        lower = token.lower().strip('.,!?')
+        if word in periods:
+            # "at ten pm tonight" names the part twice; both are timing, not content.
+            part = part or periods[word]
+            used.add(index)
+            continue
+        if hour is not None:
+            continue
+        figure = re.fullmatch(r'(\d{1,2})(?:[:.](\d{2}))?\s*(ට|ta)?(am|pm|a\.m\.|p\.m\.)?',
+                              lower)
+        if figure:
+            hour, minute = int(figure.group(1)), int(figure.group(2) or 0)
+            if figure.group(4):
+                part = 'morning' if figure.group(4).startswith('a') else 'evening'
+            used.add(index)
+            continue
+        half = word.endswith(HALF + 'ta')
+        stem = word[:-len(HALF + 'ta')] + 'ta' if half else word
+        if stem in hours:
+            hour, minute = hours[stem], 30 if half else 0
+            used.add(index)
+            continue
+        # English: "at ten", "ten o'clock".
+        if lower in ENGLISH_HOURS and index and tokens[index - 1].lower() == 'at':
+            hour, minute = ENGLISH_HOURS[lower], 0
+            used.update({index, index - 1})
+    if hour is None or not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    for index, token in enumerate(tokens):
+        if token.lower() in ('at', "o'clock") and index not in used:
+            used.add(index)
+    if part is None:
+        if hour <= 12:
+            return None
+        return dt.time(hour, minute), used
+    return dt.time(to_24_hour(hour, minute, part) % 24, minute), used
+
+
+def is_daily(text):
+    daily = {normalize(word).replace(' ', '') for word in DAILY}
+    return any(normalize(token).replace(' ', '') in daily for token in str(text).split())
+
+
+TOMORROW = ['හෙට', 'heta', 'tomorrow']
+
+
+def is_tomorrow(text):
+    tomorrow = {normalize(word).replace(' ', '') for word in TOMORROW}
+    return any(normalize(token).replace(' ', '') in tomorrow for token in str(text).split())
+
+
+def without_words(text, indices):
+    return ' '.join(token for index, token in enumerate(str(text).split())
+                    if index not in indices)
+
+
+def next_occurrence(at, moment=None):
+    """The next time the clock shows `at`: today if still ahead, otherwise tomorrow."""
+    moment = moment or dt.datetime.now().astimezone()
+    when = moment.replace(hour=at.hour, minute=at.minute, second=0, microsecond=0)
+    return when if when > moment else when + dt.timedelta(days=1)
+
+
 # Words that are part of giving the order, not part of what was asked for. Stripped so a
 # note reads "අද රෑට කෑම තියන්න එපා" rather than repeating the instruction back.
 FILLER = {
     'save_note': ['සටහනක්', 'සටහන', 'තබන්න', 'සේව්', 'ලියන්න', 'දාන්න', 'කියලා',
                   'satahanak', 'satahan', 'note', 'save', 'ekak', 'liyanna', 'thabanna'],
-    'reminder': ['මතක්', 'කරන්න', 'කියලා', 'mathak', 'karanna', 'remind', 'me', 'to',
+    # No 'කරන්න' here: it is also the verb of the thing to be done. "ෆෝන් එක චාජ් කරන්න
+    # මතක් කරන්න" must keep the first one. strip_reminder removes the second.
+    'reminder': ['කියලා', 'mathak', 'remind', 'me', 'to',
                  'minitthu', 'minute', 'minutes', 'hour', 'hours', 'dahayakin', 'pahakin'],
     'send_message': ['මැසේජ්', 'එකක්', 'යවන්න', 'කියලා', 'message', 'ekak', 'yavanna',
                      'send', 'a', 'to'],
@@ -307,6 +444,49 @@ def strip_command(text, command, use_phrasing=True):
     return ' '.join(kept).strip(' .,!?।')
 
 
+def strip_reminder(text):
+    """What to be reminded of: the sentence without "මතක් කරන්න" and the timing words.
+
+    Only the 'කරන්න' that follows 'මතක්' is the order. Any earlier one belongs to the
+    task -- "චාජ් කරන්න", charge it -- and removing it leaves half a sentence.
+    """
+    from difflib import SequenceMatcher
+    tokens = str(text).split()
+    order = normalize('මතක්').replace(' ', '')
+    kept, skip_next = [], False
+    for token in tokens:
+        word = normalize(token).replace(' ', '')
+        if skip_next and word.startswith('kara'):
+            skip_next = False
+            continue
+        skip_next = False
+        if word and SequenceMatcher(None, word, order).ratio() >= .85:
+            skip_next = True
+            continue
+        kept.append(token)
+    return strip_command(' '.join(without_delay(kept)), 'reminder', use_phrasing=False)
+
+
+def without_delay(tokens):
+    """Remove "මිනිත්තු එකකින්" and "in ten minutes": a unit and the number beside it.
+
+    Only a number next to a unit goes. "එක" is also "the" -- "ෆෝන් එක" -- and removing
+    every number word would take it.
+    """
+    words = [normalize(token).replace(' ', '') for token in tokens]
+    drop = set()
+    for index, word in enumerate(words):
+        if not word or not lexicon_match(word, UNITS, floor=.8):
+            continue
+        drop.add(index)
+        for near in (index - 1, index + 1):
+            if 0 <= near < len(words) and (tokens[near].isdigit() or number_in(words[near])):
+                drop.add(near)
+                if near == index - 1 and near and tokens[near - 1].lower() == 'in':
+                    drop.add(near - 1)
+    return [token for index, token in enumerate(tokens) if index not in drop]
+
+
 def route(text):
     """Decide what to do with a transcript.
 
@@ -336,11 +516,46 @@ def route(text):
         return result
     result.update(action='command')
     if name == 'reminder':
+        clock = extract_clock(text)
+        used = set(clock[1]) if clock else set()
+        daily = is_daily(text)
+        if daily:
+            used |= {i for i, token in enumerate(text.split()) if is_daily(token)}
+        used |= {i for i, token in enumerate(text.split()) if is_tomorrow(token)}
+        content = strip_reminder(without_words(text, used))
+        result['content'] = content
+        if daily:
+            # "Every night at ten, remind me to charge the phone": a routine.
+            result['command'] = 'routine'
+            if not clock:
+                result.update(action='ask', detail='time')
+            elif not content:
+                result.update(action='ask', detail='reminder')
+            else:
+                result['at'] = clock[0]
+            return result
         seconds = extract_duration(text)
+        if not seconds and clock:
+            # "Remind me at ten tonight": a clock time rather than a delay.
+            due = next_occurrence(clock[0])
+            today = dt.datetime.now().astimezone()
+            # At seven, "tomorrow at eight" is not the next eight o'clock. At one in the
+            # morning it is: you have not slept yet, and "tomorrow" means after you do.
+            if is_tomorrow(text) and today.hour >= 4:
+                due = today.replace(hour=clock[0].hour, minute=clock[0].minute, second=0,
+                                    microsecond=0) + dt.timedelta(days=1)
+            seconds = round((due - dt.datetime.now().astimezone()).total_seconds())
+            result['at'] = clock[0]
+        else:
+            result['content'] = strip_reminder(text)
         result['seconds'] = seconds
-        result['content'] = strip_command(text, name)
         if not seconds:
             result.update(action='model', reason='reminder without a clear time')
+    elif name == 'briefing':
+        # "Brief me at half past six every day" sets the time; otherwise brief now.
+        clock = extract_clock(text)
+        if clock:
+            result['at'] = clock[0]
     elif name in ('save_note', 'send_message', 'open_app'):
         result['content'] = strip_command(text, name, use_phrasing=(name != 'open_app'))
         if not result['content']:

@@ -17,6 +17,7 @@ import requests
 
 from assistant_core import ROOT, Store, Tools, system_status
 from agent import Agent
+from routines import settings as routine_settings
 
 
 def create_server(port=4190, data_dir=None):
@@ -173,6 +174,8 @@ def create_server(port=4190, data_dir=None):
                                                 'speaking': speaking(),
                                                 'enabled': store.config('voice_enabled', False),
                                                 'rate': store.config('voice_rate', '+0%')},
+                                      'routines': {**routine_settings(store),
+                                                   'daily': store.config('routines', [])},
                                       'records': store.records(), 'history': store.history(),
                                       'jobs': [agent.snapshot(key) for key in list(agent.jobs)]})
                 if path.startswith('/api/jobs/'):
@@ -249,6 +252,24 @@ def create_server(port=4190, data_dir=None):
                         if not re.fullmatch(r'[+-]\d{1,3}%', rate):
                             raise ValueError("Speech rate looks like '+20%' or '-10%'")
                         store.set_config('voice_rate', rate)
+                    # Speaking first (Day 19). Times are checked here so a typo cannot
+                    # leave the clock thread failing on every tick.
+                    import routines
+                    if 'briefing_time' in body:
+                        store.set_config('briefing_time',
+                                         routines.parse_hhmm(body['briefing_time']).strftime('%H:%M'))
+                    if 'briefing_enabled' in body:
+                        store.set_config('briefing_enabled', bool(body['briefing_enabled']))
+                    if 'quiet_hours' in body:
+                        quiet = [routines.parse_hhmm(t).strftime('%H:%M') for t in body['quiet_hours']]
+                        if len(quiet) != 2:
+                            raise ValueError('Quiet hours are a start and an end, like ["22:30", "06:30"]')
+                        store.set_config('quiet_hours', quiet)
+                    if 'interruptions_per_hour' in body:
+                        limit = int(body['interruptions_per_hour'])
+                        if not 0 <= limit <= 60:
+                            raise ValueError('Between 0 and 60 remarks an hour')
+                        store.set_config('interruptions_per_hour', limit)
                     return self.send({'saved': True})
                 return self.send({'error': 'Not found'}, 404)
             except (ValueError, TypeError, KeyError, OSError) as error:

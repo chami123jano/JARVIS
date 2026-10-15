@@ -255,6 +255,22 @@ class Tools:
             media.start(item)
             media.remember_played(self.store, item)
             return {'playing': item['title'], 'source': item['source']}
+        # The web, read (Day 11). Someone else's words: the agent marks the turn untrusted.
+        if name == 'look_up':
+            import browser
+            return browser.wikipedia(str(args['query']).strip()[:300])
+        if name == 'check_price':
+            import browser
+            found = browser.prices(str(args['product']).strip()[:120])
+            return {'prices': [{k: c[k] for k in ('name', 'from', 'shops')} for c in found],
+                    'source': 'priceplease.lk'} if found else \
+                {'prices': [], 'note': 'PricePlease.lk lists nothing by that name.'}
+        if name == 'read_web_page':
+            import browser
+            return browser.read(str(args['url'])[:500], str(args.get('question', ''))[:300])
+        if name == 'fill_web_form':
+            import browser
+            return browser.fill(str(args['url'])[:500], args['fields'])
         if name in ('web_search', 'play_music'):
             query = str(args['query']).strip()[:500]
             base = 'https://www.youtube.com/results?search_query=' if name == 'play_music' else 'https://www.google.com/search?q='
@@ -283,7 +299,19 @@ TOOL_DEFINITIONS = {
                       'can do, propose a new tool for it. It is written in the background '
                       'and cannot be used until the user reads and approves it in the '
                       'console. Say exactly that; never say it is ready.', {'need': 'string'}),
-    'web_search': ('Open browser search. Does not retrieve results.', {'query': 'string'}),
+    'look_up': ('Look a fact up on Wikipedia -- people, places, history, science, events, '
+                'sport results. Write the query as a Wikipedia article title would be, in '
+                'Sinhala for Sinhala topics. Say which article you used.', {'query': 'string'}),
+    'check_price': ('Current prices in Sri Lankan shops, from PricePlease.lk: phones, '
+                    'tablets, laptops, watches, accessories.', {'product': 'string'}),
+    'read_web_page': ('Read a web page the user named, by its address.',
+                      {'url': 'string', 'question': 'string'}),
+    'fill_web_form': ('Fill a form on a web page in a visible window, with values the user '
+                      'gave. It never submits: the user checks it and presses submit. '
+                      'fields is a JSON object of field label to value.',
+                      {'url': 'string', 'fields': 'string'}),
+    'web_search': ('Open a search page in the browser for the user to look at. Does not '
+                   'read the results.', {'query': 'string'}),
     'play_music': ('Play a song or music: the first YouTube result, playing. The query '
                    'is what the user asked for, in their words.', {'query': 'string'}),
 }

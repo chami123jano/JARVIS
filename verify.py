@@ -822,13 +822,30 @@ def echo_guard():
     return PASS, 'self-speech filtered, commands pass'
 
 
+@check('day 11', 'Reads the web: Wikipedia, prices, a page')
+def reads_the_web():
+    import browser
+    started = time.monotonic()
+    fact = browser.wikipedia('සීගිරිය')['results']
+    if not fact or 'කාශ්‍යප' not in ' '.join(r['excerpt'] for r in fact):
+        return FAIL, f'Sinhala Wikipedia gave {[r["title"] for r in fact]}'
+    priced = browser.prices('iphone 16')
+    if not priced or priced[0]['name'].lower() != 'iphone 16':
+        return FAIL, f'PricePlease gave {[c["name"] for c in priced]}'
+    page = browser.read('https://en.wikipedia.org/wiki/Sigiriya', 'who built it')
+    if 'Kashyapa' not in page['excerpt']:
+        return FAIL, f'page read without the answer: {page["excerpt"][:80]!r}'
+    return PASS, (f"Sigiriya from si.wikipedia, iPhone 16 {priced[0]['from']}, page read in "
+                  f'Chrome, {time.monotonic() - started:.0f}s')
+
+
 ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
          google_stt, whisper_loads, vad_check, transcribe_clips, command_accuracy,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, the_face, offline_sinhala, hardened, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, the_face, offline_sinhala, hardened, always_on, reads_the_web]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

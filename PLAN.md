@@ -901,6 +901,59 @@ work by voice.
 
 ---
 
+#### ✅ Day 11 complete — it reads the web, from places that let it
+
+`browser.py` drives the installed Chrome through Playwright (no browser download). What it
+does, measured through the running JARVIS on 16 Oct:
+
+  - **Facts from Wikipedia's own API**, Sinhala Wikipedia for Sinhala questions:
+    "සීගිරිය හැදුවේ කවුද" → කාශ්‍යප රජු, "යාපනය කොහෙද", "who painted the mona lisa", "who
+    won the 2023 cricket world cup" → Australia. 5–9 s. The answer always names Wikipedia.
+  - **Prices from PricePlease.lk** (48 Sri Lankan shops): "iPhone 16 එක කීයද" → "iPhone 16
+    රුපියල් 225,500 ඉඳන් තියෙනවා, කඩ 22ක". Said by template, not the model, which turned
+    Rs. 167,500 into "less than a lakh". 4–8 s.
+  - **Any page you name**, read in a private headless window; a page that is all pictures
+    goes to the vision model (Day 15).
+  - **Forms filled in a window you can see, never submitted.** It will not type into a
+    password, card, CVV, OTP or PIN field, and will not touch a checkout or payment page.
+    You check it and press submit. A closed window is noticed; the next form opens a new one.
+
+The words decide, not the model: given the tools, qwen3.5 looked up an English price itself
+but answered "සීගිරිය හැදුවේ කවුද" with "the King of Kegalle" and "galaxy s25 eka kiyada"
+with "no fixed price yet", calling nothing. So price and fact questions are recognised in
+code and fetched before the model answers, as files were on Day 13. Everything read is
+marked untrusted (the Day 28 gate): a page cannot make JARVIS fill a form.
+
+Search engines said no, and no is the answer. Google and DuckDuckGo showed this browser a
+robot check; Bing quietly returned nonsense (Barbara Palvin, for "who won the last cricket
+world cup"). JARVIS does not get past a check like that. **Open web search needs a search
+API with a key you create** (Brave Search has a free tier) -- not built, waiting on you.
+
+Found on the way:
+  - "iPhone 16 එක කීයද" was told the time, "galaxy s25 eka kiyada" was the battery, and
+    "යාපනය කොහෙද" got Jaffna's weather: කීයද is "how much" too, and කොහෙද sounds like
+    කොහොමද. Time, battery and weather now need a word of their own.
+  - "kumana jathika udyanaya" found Horton Plains (its page spells its own Sinhala name in
+    Latin letters). An article whose title shares no word with the question is dropped, and
+    the fast brain names it in English instead.
+  - The reader kept a profile, which the running JARVIS locked; anything else then failed
+    to start Chrome. The reader now keeps nothing, like an incognito window.
+  - Once, Ollama stopped answering for five minutes with a short request stuck (02:04).
+    Cause not proven. Whisper (1.2 GB of the 8 GB GPU) now loads only when Google cannot be
+    reached and is given back when it can; a failed answer is now said as "ආයෙත් අහන්න",
+    not read out as "HTTPConnectionPool ... Read timed out"; and a question asked while
+    another runs is told so instead of getting nothing.
+
+  - verify.py caught a regression of my own: two sentences added to the system prompt
+    ("advice needs no tool", "use look_up for facts") made "calculate, then save_note"
+    really save 1 time in 6 -- the other five *said* "the note has been saved". Without
+    them, 6 in 6. The advice hint now goes only with plain questions; the claim check knows
+    those wordings; and a claim that survives two corrections is replaced by "I did not
+    manage to do that", never passed on.
+
+Not done: parcel tracking. It needs a courier that lets a program look a number up, and a
+real tracking number to test with.
+
 ### Day 11 — Real browser control
 
 **Goal:** it uses the web instead of merely opening it.

@@ -45,6 +45,24 @@ class StartupTests(unittest.TestCase):
         for p in self.patches:
             p.stop()
 
+    def test_a_failed_model_is_not_read_aloud(self):
+        """Measured 16 Oct: "HTTPConnectionPool(host='127.0.0.1', port=11434): Read timed
+        out." was spoken as the answer."""
+        import agent
+        import responses
+        failed = {'state': 'error', 'answer': "HTTPConnectionPool(host='127.0.0.1'): Read timed out."}
+        with patch.object(agent.Agent, 'start', return_value='j'), \
+                patch.object(agent.Agent, 'snapshot', return_value=failed):
+            reply = self.respond('who painted the mona lisa?', speak=False)
+        self.assertEqual(reply, responses.say_no_answer('en'))
+
+    def test_a_second_question_while_busy_gets_an_answer(self):
+        import agent
+        import responses
+        with patch.object(agent.Agent, 'start', side_effect=ValueError('already running')):
+            reply = self.respond('who painted the mona lisa?', speak=False)
+        self.assertEqual(reply, responses.say_still_thinking('en'))
+
     def test_start_watching_starts_everything(self):
         self.start_watching()
         for name in ('presence', 'routines', 'files', 'memory'):

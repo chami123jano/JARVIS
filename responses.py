@@ -334,6 +334,29 @@ SINHALA_PLACES = {
 }
 
 
+def say_prices(cards, lang='si'):
+    """Day 11: the closest product, and at most one other, from PricePlease.lk. Said by
+    template: measured, the model turned Rs. 167,500 into "less than a lakh"."""
+    def shops(card, english):
+        count = card.get('shops') or 0
+        if english:
+            return f', at {count} shop{"s" if count != 1 else ""}' if count else ''
+        return f', කඩ {count}ක' if count else ''
+    # 'MacBook Air 15" M3': the inch mark is not speech.
+    cards = [dict(c, name=re.sub(r'(\d+(?:\.\d+)?)\s*"', r'\1 inch', c['name']).strip(' &'))
+             for c in cards]
+    first = cards[0]
+    if lang == 'en':
+        said = f"{first['name']} starts at {money(first['rupees'], 'en')}{shops(first, True)}."
+        if len(cards) > 1:
+            said += f" The {cards[1]['name']} is from {money(cards[1]['rupees'], 'en')}."
+        return said + ' That is from PricePlease.'
+    said = f"{first['name']} {money(first['rupees'])} ඉඳන් තියෙනවා{shops(first, False)}."
+    if len(cards) > 1:
+        said += f" {cards[1]['name']} {money(cards[1]['rupees'])} ඉඳන්."
+    return said + ' PricePlease එකේ හැටියට.'
+
+
 def say_dollar(data, lang='si'):
     rate = data.get('rate', 0)
     if lang == 'en':
@@ -746,6 +769,13 @@ def say_thinking_deeply(lang='si'):
                 'Loading the deep brain unloads the quick one, so I will be slower until then.')
     return ('හරි, ඒ ගැන හොඳට හිතලා විනාඩි කීපයකින් කියන්නම්. '
             'ඒ වෙනකම් මම ටිකක් හෙමින් වැඩ කරන්නේ.')
+
+
+def say_no_answer(lang='si'):
+    """The model failed or timed out. Measured 16 Oct: "HTTPConnectionPool(host=
+    '127.0.0.1', port=11434): Read timed out." was read aloud as the answer."""
+    return ('Sorry, my thinking got stuck on that one. Please ask again.' if lang == 'en'
+            else 'සමාවෙන්න, ඒකට උත්තරයක් හදාගන්න බැරි වුණා. ආයෙත් අහන්න.')
 
 
 def say_still_thinking(lang='si'):

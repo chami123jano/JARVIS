@@ -580,6 +580,17 @@ def without_delay(tokens):
     return [token for index, token in enumerate(tokens) if index not in drop]
 
 
+# Commands asked with "how much" (කීයද, kiyada) need their own word as well.
+OWN_WORDS = {
+    'time': re.compile(r'වෙලාව|වේලාව|දැන්|පැය|velav|vela|wela|welaw|time|dan\b|dang|deng|'
+                       r'clock|hour', re.I),
+    'battery': re.compile(r'බැටරි|batter|batari|bateri|baitari|charge|චාජ්|power', re.I),
+    # "කොහෙද" (where) sounds like "කොහොමද" (how): "යාපනය කොහෙද?" was given Jaffna's weather.
+    'weather': re.compile(r'කාලගුණ|weather|kalagun|එළිය|eliya|වැස්ස|වහින|wassa|wahin|rain|'
+                          r'උෂ්ණ|temperature|අව්ව|awwa|forecast|සීතල|රස්නෙ|hot|cold', re.I),
+}
+
+
 def route(text):
     """Decide what to do with a transcript.
 
@@ -600,6 +611,12 @@ def route(text):
               'runner_up': second, 'runner_up_score': round(second_score, 3),
               # Replies follow the language they were asked in.
               'language': language}
+    if name in OWN_WORDS and not OWN_WORDS[name].search(text):
+        # "කීයද" is "how much" as well as "what time" and "how full": measured 16 Oct,
+        # "iPhone 16 එක කීයද?" matched the time at 0.69 and was told it was two o'clock,
+        # and "galaxy s25 eka kiyada" was the battery or a new skill.
+        result.update(action='model', reason=f'no word of {name} in it')
+        return result
     if language == 'en' and score >= ACCEPT and not shares_a_word(text, name):
         result.update(action='model', reason='no word of the command in an English sentence')
         return result

@@ -186,29 +186,38 @@ class Hearing:
             self.load_whisper()
 
     LOADING = threading.Lock()
+    # Whisper holds 1.2 GB of the 8 GB GPU beside the fast model (7.8 GB in use with both),
+    # and on the processor it takes 17 s a sentence. So it is loaded only when Google
+    # cannot be reached, and given back once Google has been fine this long.
+    RELEASE_AFTER = 300
 
     def load_whisper(self):
-        with self.LOADING:          # a command during the preload waits for it, not a second copy
+        with self.LOADING:
             if self.whisper is None:
                 self.whisper = Ears(self.model_name, self.whisper_device)
+            self.whisper_used = time.monotonic()
         return self.whisper
 
-    def preload(self):
-        """Load Whisper in the background now. Measured 16 Oct: Google returned nothing
-        for a clip, Whisper loaded on the spot, and that command took 12.7 s. With it
-        loaded, the fast model, the embedder and Whisper all fit in the 8 GB (7.9 used)."""
-        if self.whisper is None and self.engine != 'google':
-            threading.Thread(target=self.load_whisper, daemon=True, name='whisper-preload').start()
+    def release_if_idle(self):
+        if self.whisper is not None and self.engine == 'auto' and \
+                time.monotonic() - getattr(self, 'whisper_used', time.monotonic()) > \
+                self.RELEASE_AFTER:
+            with self.LOADING:
+                self.whisper = None
+            import gc
+            gc.collect()
+            print('  (Google is back: Whisper unloaded, its GPU memory returned)', flush=True)
 
     def transcribe(self, audio, language=None):
         if self.google is not None and self.engine != 'whisper':
             try:
                 text, seconds, info = self.google.transcribe(audio, language)
                 self.failures = 0
-                if text:
-                    return text, seconds, info
-                # Silence is a legitimate empty answer, not a failure.
-                if len(audio) / SAMPLE_RATE < 1.0:
+                self.release_if_idle()
+                # Google heard nothing: that is the answer. Measured 16 Oct, asking
+                # Whisper instead cost 12 s to load it and came back with "Hey Chavez!"
+                # and "Enjoy!" -- noise, answered as if it were speech.
+                if text or self.whisper is None or len(audio) / SAMPLE_RATE < 1.0:
                     return text, seconds, info
             except Exception as error:
                 self.failures += 1
@@ -1621,16 +1630,25 @@ def build_brain(args):
                 reply = responses.say_skill_failed(skill, str(error), lang)
         else:
             prompt = command_prompt(decision) if decision['action'] == 'command' else text
-            job_id = agent.start(prompt)
-            for _ in range(1200):
-                job = agent.snapshot(job_id)
-                if job['state'] not in ('running', 'stopping'):
-                    break
-                time.sleep(.25)
-            else:
-                agent.stop(job_id)
-                job = agent.snapshot(job_id)
-            reply = job['answer']
+            try:
+                job_id = agent.start(prompt)
+            except ValueError:
+                # One request at a time; measured, a second one got no answer at all.
+                job_id = None
+                reply = responses.say_still_thinking(lang)
+            if job_id:
+                for _ in range(1200):
+                    job = agent.snapshot(job_id)
+                    if job['state'] not in ('running', 'stopping'):
+                        break
+                    time.sleep(.25)
+                else:
+                    agent.stop(job_id)
+                    job = agent.snapshot(job_id)
+                reply = job['answer']
+                if job['state'] == 'error':
+                    print(f'  model failed: {reply[:200]}', file=sys.stderr)
+                    reply = responses.say_no_answer(lang)
         print(f'  JARVIS: {reply[:160]}', flush=True)
         if speak:
             if on_state:
@@ -1692,7 +1710,6 @@ def wake_loop(args):
     start_watching()
     vad = Vad()
     ears = Hearing(args.stt, args.model, args.whisper_device)
-    ears.preload()
     listener = Listener(vad, ears, args.device, args.wake_threshold,
                         None if args.lang == 'auto' else args.lang)
 

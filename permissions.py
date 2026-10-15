@@ -23,6 +23,9 @@ TIERS = {
     'read_document': READ, 'find_files': READ, 'translate': READ, 'search_files': READ,
     'time': READ, 'battery': READ, 'list_notes': READ, 'capabilities': READ,
     'weather': READ, 'news': READ, 'dollar_rate': READ,
+    'look_up': READ, 'check_price': READ, 'read_web_page': READ,
+    # Types into a page you can see and stops there; submitting is yours (Day 11).
+    'fill_web_form': LOCAL,
     # Tier 1: changes confined to this machine.
     'save_note': LOCAL, 'set_reminder': LOCAL, 'remember': LOCAL,
     'write_document': LOCAL, 'open_app': LOCAL, 'web_search': LOCAL,

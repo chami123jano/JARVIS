@@ -186,10 +186,25 @@ class AnswerTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertIn('(Answer in Sinhala.)', self.seen_by_the_model(text))
 
-    def test_it_is_told_that_advice_needs_no_tool(self):
-        """Measured: "what should I eat for dinner?" got "I don't have a tool to suggest meals"."""
+    def test_a_plain_question_is_told_it_needs_no_tool(self):
+        """Measured: "what should I eat for dinner?" got "I don't have a tool to suggest
+        meals". Told to that question only: in the system prompt, the same words made
+        "calculate, then save_note" save 1 time in 6."""
+        self.assertIn('needs no tool', self.seen_by_the_model('what should I eat for dinner?'))
+        self.assertNotIn('needs no tool', self.seen_by_the_model(
+            'Use calculate for 137 * 23, then save_note titled Verify'))
         with patch.object(memory, 'context_for', return_value=[]):
-            self.assertIn('you need no tool', self.agent.system_prompt('what should I eat'))
+            self.assertNotIn('no tool', self.agent.system_prompt('anything'))
+
+    def test_a_claim_that_survives_two_corrections_is_not_passed_on(self):
+        """Measured: "The note titled Verify ... has been saved successfully", no tool called."""
+        claim = {'role': 'assistant', 'content': 'The note titled Verify has been saved successfully.'}
+        with patch.object(self.agent, 'generate', return_value=claim):
+            job_id = self.agent.start('save a note titled Verify')
+            self.agent.wait(job_id)
+        answer = self.agent.snapshot(job_id)['answer']
+        self.assertNotIn('saved successfully', answer)
+        self.assertIn('never actually ran', answer)
 
     def test_a_question_is_never_remembered_as_a_fact(self):
         """Measured: "which is better for me, coffee or tea?" became "prefers coffee or tea"."""
@@ -280,31 +295,50 @@ class MusicChoiceTests(unittest.TestCase):
         self.assertEqual(responses.short_title('[JUKEBOX] හොදම සින්දු ටික'), 'හොදම සින්දු ටික')
 
 
-class WhisperPreloadTests(unittest.TestCase):
-    """Measured 16 Oct: Whisper loaded on the spot inside a command -- 12.7 s."""
+class WhisperMemoryTests(unittest.TestCase):
+    """Whisper takes 1.2 GB of the 8 GB GPU beside the fast model: loaded only when Google
+    cannot be reached, given back when it can."""
 
-    def test_loaded_in_the_background_once(self):
-        import threading
+    def hearing(self, google_text='', whisper=None):
         import voice_loop
-        started, release = threading.Event(), threading.Event()
-        loads = []
+        ears = voice_loop.Hearing.__new__(voice_loop.Hearing)
+        ears.engine, ears.failures, ears.whisper = 'auto', 0, whisper
+        ears.model_name, ears.whisper_device = 'm', 'auto'
+        ears.google = MagicMock()
+        ears.google.transcribe.return_value = (google_text, 0.1, MagicMock(language='si'))
+        return ears
 
-        def slow_ears(model, device):
-            loads.append(model)
-            started.set()
-            release.wait(5)
-            return 'whisper'
-        hearing = voice_loop.Hearing.__new__(voice_loop.Hearing)
-        hearing.whisper, hearing.engine = None, 'auto'
-        hearing.model_name, hearing.whisper_device = 'm', 'auto'
-        with patch.object(voice_loop, 'Ears', side_effect=slow_ears):
-            hearing.preload()
-            self.assertTrue(started.wait(5))
-            waiting = threading.Thread(target=hearing.load_whisper)
-            waiting.start()          # a command arriving during the preload
-            release.set()
-            waiting.join(5)
-        self.assertEqual((loads, hearing.whisper), (['m'], 'whisper'), 'loaded once')
+    def test_google_hearing_nothing_does_not_load_whisper(self):
+        """It cost 12 s, and what came back was "Hey Chavez!"."""
+        import numpy
+        import voice_loop
+        ears = self.hearing('')
+        with patch.object(voice_loop, 'Ears') as loaded:
+            text, _, _ = ears.transcribe(numpy.zeros(48000, dtype='float32'))
+        self.assertEqual(text, '')
+        loaded.assert_not_called()
+
+    def test_whisper_loads_when_google_cannot_be_reached(self):
+        import numpy
+        import voice_loop
+        ears = self.hearing()
+        ears.google.transcribe.side_effect = OSError('no internet')
+        whisper = MagicMock()
+        whisper.transcribe.return_value = ('offline text', 0.5, MagicMock())
+        with patch.object(voice_loop, 'Ears', return_value=whisper):
+            self.assertEqual(ears.transcribe(numpy.zeros(48000, dtype='float32'))[0],
+                             'offline text')
+
+    def test_given_back_once_google_has_been_fine_a_while(self):
+        import numpy
+        ears = self.hearing('වෙලාව කීයද', whisper=MagicMock())
+        ears.whisper_used = 0.0                      # long ago
+        ears.transcribe(numpy.zeros(48000, dtype='float32'))
+        self.assertIsNone(ears.whisper)
+
+    def test_nothing_loads_whisper_at_start(self):
+        import voice_loop
+        self.assertNotIn('preload', inspect.getsource(voice_loop.wake_loop))
 
 
 class NameClashTests(unittest.TestCase):

@@ -165,6 +165,29 @@ def todays_routines(store, moment):
 
 # ---------------------------------------------------------------- daily routines
 
+BACKUPS_KEPT = 7
+
+
+def backup(database, day=None, keep=BACKUPS_KEPT):
+    """A consistent copy of the database in data/backups, through SQLite's own backup --
+    safe while JARVIS is writing to it, unlike copying the file. The oldest beyond
+    `keep` are deleted. Returns the new file's path."""
+    import sqlite3
+    database = Path(database)
+    folder = database.parent / 'backups'
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f'{database.stem}-{(day or dt.date.today()).isoformat()}.db'
+    source, copy = sqlite3.connect(database), sqlite3.connect(target)
+    try:
+        source.backup(copy)
+    finally:
+        copy.close()
+        source.close()
+    for old in sorted(folder.glob(f'{database.stem}-*.db'))[:-keep]:
+        old.unlink()
+    return target
+
+
 def routines(store):
     return list(store.config('routines', []))
 
@@ -316,6 +339,15 @@ class Routines:
             self.cpu_busy_since = None
         return remarks
 
+    def check_backup(self, moment):
+        """Once a day, a copy of the database; seven kept. Silent: nothing to say."""
+        today = moment.date().isoformat()
+        if self.store.config('backup_last', '') == today:
+            return None
+        made = backup(self.store.path, moment.date())
+        self.store.set_config('backup_last', today)
+        return made
+
     def tick(self, moment=None):
         """One look at the clock. Returns [(kind, text, said)] for the log and tests."""
         moment = moment or now_local()
@@ -328,6 +360,10 @@ class Routines:
                 remarks += check(moment)
             except Exception as error:
                 print(f'  routines: {check.__name__} failed ({error})', file=sys.stderr)
+        try:
+            self.check_backup(moment)
+        except Exception as error:
+            print(f'  routines: backup failed ({error})', file=sys.stderr)
         remarks.sort(key=lambda remark: PRIORITY.get(remark[0], 9))
         outcome = []
         for kind, text, on_said in remarks:

@@ -462,3 +462,30 @@ class SpokenTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BackupTests(unittest.TestCase):
+    """Day 28: a copy a day, seven kept, taken safely while the database is in use."""
+
+    def test_seven_days_are_kept(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = Store(Path(folder) / 'jarvis.db')
+            store.add('note', 'keep me')
+            for day in range(1, 11):
+                routines.backup(store.path, dt.date(2026, 10, day))
+            kept = sorted(p.name for p in (Path(folder) / 'backups').glob('*.db'))
+            self.assertEqual(len(kept), 7)
+            self.assertEqual(kept[0], 'jarvis-2026-10-04.db')
+            copy = Store(Path(folder) / 'backups' / kept[-1])
+            self.assertEqual(copy.records()[0]['title'], 'keep me')
+
+    def test_once_a_day_from_the_clock(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = Store(Path(folder) / 'jarvis.db')
+            store.set_config('briefing_enabled', False)
+            clock = routines.Routines(store, lambda text: None, battery=lambda: None,
+                                      disk=lambda: 0, cpu=lambda: 0)
+            clock.tick(at(10))
+            clock.tick(at(11))
+            clock.tick(at(10, day=16))
+            self.assertEqual(len(list((Path(folder) / 'backups').glob('*.db'))), 2)

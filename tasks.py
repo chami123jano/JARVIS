@@ -36,6 +36,9 @@ WALL_CLOCK_SECONDS = 300
 # a step reaches outside the computer.
 CONFIRM_OVER = 3
 RETRIES = 1
+# Said aloud when a step needs the internet. Measured on Day 28: the raw error went out
+# as "HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries...".
+NO_INTERNET = 'there is no internet connection'
 FILE_VISIT_LIMIT = 20000
 DOCUMENT_LIMIT = 200
 
@@ -385,21 +388,21 @@ class Steps:
         try:
             return knowledge.weather(knowledge.find_place(place) if place else None)
         except knowledge.Offline as error:
-            raise StepError(str(error), retryable=True)
+            raise StepError(NO_INTERNET, retryable=True) from error
 
     def dollar_rate(self):
         import knowledge
         try:
             return knowledge.dollar_rate()
         except knowledge.Offline as error:
-            raise StepError(str(error), retryable=True)
+            raise StepError(NO_INTERNET, retryable=True) from error
 
     def news(self):
         import knowledge
         try:
             return {'headlines': knowledge.news()}
         except knowledge.Offline as error:
-            raise StepError(str(error), retryable=True)
+            raise StepError(NO_INTERNET, retryable=True) from error
 
     def run(self, name, args):
         if name not in self.SPEC:

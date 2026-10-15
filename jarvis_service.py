@@ -90,13 +90,18 @@ def setup_logging(to_console=False):
     log.setLevel(logging.INFO)
 
 
-def rotate_voice_log():
-    """One previous copy kept; the voice loop is chatty and runs for days."""
+def rotate_log(path, limit=None):
+    """One previous copy kept. A file still held open by its writer is left for next time."""
     try:
-        if VOICE_LOG.exists() and VOICE_LOG.stat().st_size > VOICE_LOG_LIMIT:
-            VOICE_LOG.replace(VOICE_LOG.with_suffix('.log.1'))
+        if path.exists() and path.stat().st_size > (limit or VOICE_LOG_LIMIT):
+            path.replace(path.with_suffix('.log.1'))
     except OSError:
         pass
+
+
+def rotate_voice_log():
+    """The voice loop is chatty and runs for days."""
+    rotate_log(VOICE_LOG)
 
 
 # ------------------------------------------------------------------ single instance
@@ -219,6 +224,8 @@ def start_ollama():
     if not exe:
         raise RuntimeError('Ollama is not installed')
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    # Ollama logs every few tokens; this file had reached 9.4 MB in a day (Day 28).
+    rotate_log(LOG_DIR / 'ollama.log', 5_000_000)
     output = open(LOG_DIR / 'ollama.log', 'a', encoding='utf-8')
     # Not placed in the voice loop's job: Ollama should outlive a restart of JARVIS.
     subprocess.Popen([str(exe), 'serve'], env=ollama_environment(), stdout=output,

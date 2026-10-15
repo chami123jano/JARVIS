@@ -634,6 +634,24 @@ def remembers():
                   f'{len(mem.unsummarised())} messages not yet summarised')
 
 
+@check('day 28', 'Hardened: injection refused, offline degrades, backups kept')
+def hardened():
+    import io as _io
+    import unittest
+    sys.path.insert(0, str(ROOT / 'tests'))
+    suite = unittest.defaultTestLoader.loadTestsFromNames(['test_injection', 'test_offline'])
+    result = unittest.TextTestRunner(stream=_io.StringIO(), verbosity=0).run(suite)
+    if not result.wasSuccessful():
+        broken = [t.id().split('.')[-1] for t, _ in result.failures + result.errors]
+        return FAIL, 'failed: ' + ', '.join(broken[:4])
+    backups = sorted((ROOT / 'data' / 'backups').glob('jarvis-*.db'))
+    if not backups:
+        return WARN, (f'{result.testsRun} injection and offline tests pass; no backup yet '
+                      '(the first is made by the running service today)')
+    return PASS, (f'{result.testsRun} injection and offline tests pass; {len(backups)} '
+                  f'backups, newest {backups[-1].stem[7:]}')
+
+
 @check('day 27', 'Always on: service, autostart, Ollama')
 def always_on():
     import jarvis_service as service
@@ -713,7 +731,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, hardened, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

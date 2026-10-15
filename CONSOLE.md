@@ -1,7 +1,7 @@
 # JARVIS Command Console
 
 A local personal assistant with a responsive web interface and Python tool backend.
-The existing `jarvis_gui.py` desktop application remains available.
+The voice assistant itself is described in [README.md](README.md); this console is its optional window.
 
 ## Run
 

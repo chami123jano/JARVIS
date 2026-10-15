@@ -72,14 +72,14 @@ class RoutingTests(unittest.TestCase):
         """
         from unittest.mock import patch
         with patch('router.match', return_value=('volume_up', .82, 'volume_down', .80)):
-            outcome = route('some utterance')
+            outcome = route('the volume please')
         self.assertEqual(outcome['action'], 'unclear')
         self.assertIn('ambiguous', outcome['reason'])
 
     def test_a_clear_winner_is_acted_on(self):
         from unittest.mock import patch
         with patch('router.match', return_value=('volume_up', .82, 'volume_down', .60)):
-            outcome = route('some utterance')
+            outcome = route('the volume please')
         self.assertEqual(outcome['action'], 'command')
 
     def test_thresholds_stay_in_their_measured_order(self):
@@ -178,3 +178,23 @@ class ContentExtractionTests(unittest.TestCase):
                 outcome = route(text)
                 self.assertEqual(outcome['command'], expected)
                 self.assertEqual(outcome['action'], 'command')
+
+
+class EnglishSentenceTests(unittest.TestCase):
+    """Day 28: sound-alike matching is for Sinhala. An English sentence must share a real
+    word with a command before it is acted on."""
+
+    def test_questions_go_to_the_model(self):
+        for text in ('what is the capital of Japan', 'why is the sky blue',
+                     'who wrote Hamlet', 'how many legs does a spider have'):
+            with self.subTest(text=text):
+                self.assertEqual(route(text)['action'], 'model')
+
+    def test_english_commands_still_work(self):
+        for text, command in [('what time is it', 'time'), ('turn up the volume', 'volume_up'),
+                              ('what can you do', 'capabilities'), ('stop talking', 'stop'),
+                              ('ammata message ekak yavanna', 'send_message'),
+                              ('dan velava kiyada', 'time')]:
+            with self.subTest(text=text):
+                self.assertEqual(route(text)['command'], command)
+                self.assertNotEqual(route(text)['action'], 'model')

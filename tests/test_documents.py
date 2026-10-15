@@ -135,6 +135,15 @@ class AgentTests(LibraryCase):
                          'Your CV.pdf lists Python.', 'already cited, left alone')
         self.assertEqual(Agent.with_source('Hello.', []), 'Hello.')
 
+    def test_an_answer_that_found_nothing_is_not_given_a_source(self):
+        """Measured: "I cannot find a file named project-notes (project-notes.md, ...)"."""
+        sources, texts = ['project-notes.md, lines 1-5'], ['Demo moved to Thursday.']
+        self.assertEqual(Agent.with_source('I cannot find a file named project-notes.',
+                                           sources, texts),
+                         'I cannot find a file named project-notes.')
+        self.assertTrue(Agent.with_source('The demo moved to Thursday.', sources, texts)
+                        .endswith('(project-notes.md, lines 1-5)'))
+
     def test_the_model_can_search_too(self):
         tools = Tools(self.store, Path(self.temp.name) / 'w')
         found = [{'where': 'a.md, lines 1-2', 'path': 'x', 'text': 'mangoes'}]

@@ -1109,6 +1109,49 @@ tried so far without it.
 
 ---
 
+#### ✅ Day 17 complete — another voice asks to send a message, and is politely refused
+
+The same request, "අම්මාට මැසේජ් එකක් යවන්න මම රෑට එනවා කියලා", through the real voice
+brain in three voices: a Windows voice (a visitor) scored 0.07 and JARVIS's own voice
+(the television, or an echo) 0.01 -- both answered "සමාවෙන්න, මැසේජ් යවන්න පුළුවන්
+චමින්දුට විතරයි." His own recording scored 0.74 and went on to ask who amma is.
+
+`speaker.py`: wespeaker ResNet34 (26.5 MB, onnxruntime, on this computer), with Kaldi's
+80-band filterbank computed in numpy -- no PyTorch. Measured (`bench_speaker.py`), each of
+his clips against a voiceprint made without it:
+
+| voice | score |
+|---|---|
+| him, read on Day 2 | 0.61 - 0.85 |
+| him, live commands through the wake-word microphone | 0.49 - 0.67 |
+| JARVIS's own voice, Windows' voices | -0.04 - 0.21 |
+
+Threshold 0.35. Learned from his own saved recordings -- nothing new had to be recorded.
+
+  - **Guarded:** the request for a message and the yes that sends it; a multi-step plan
+    with an outward step, and its yes. The request is long enough to judge and must be
+    his. The yes is usually too short to judge, so it is refused only when clearly another
+    voice. Anyone may ask the time or play a song.
+  - The voiceprint stays in data/, never in git.
+
+Found by doing it:
+  - **Four "owner" recordings were not him** -- one minute of wake-word testing on 28 Sept,
+    scoring 0.04-0.13: JARVIS hearing itself, or the room. Learning from them would have
+    taught the voiceprint JARVIS's voice.
+  - **Against the read-aloud voice alone, his live commands scored down to 0.26** while
+    JARVIS's voice reached 0.25: the always-on microphone and the room change a voice.
+    Learning from his live commands as well opened the gap to 0.28.
+  - **A lone "නෑ", with nothing waiting, went to the model**, which answered an old
+    question from the history (his CV). A bare yes or no now gets "හරි".
+  - **Microsoft's voice service began refusing every request (403) on 15 Oct** -- reported
+    by others the same morning, not fixed by the newest edge-tts. Replies fall back to the
+    Windows voice as designed. The health check had not noticed: it said a phrase already
+    in the cache. It now says a new one.
+
+Limit: the "other voices" were synthetic. A real visitor speaks through the same
+microphone in the same room and may score closer; the test that matters is a second
+person asking it to send a message.
+
 ### Day 17 — It knows who is speaking
 
 **Goal:** your voice can send messages; the television cannot.

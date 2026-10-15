@@ -813,3 +813,12 @@ def say_no_music(reason, lang='si'):
     if 'nothing has been played' in reason:
         return 'තාම මොකුත් සින්දු දාලා නෑ.'
     return 'ඒ සින්දුව දාන්න බැරි වුණා.'
+
+
+# ---------------------------------------------------------------- who is speaking (Day 17)
+
+def say_not_owner(lang='si'):
+    """Polite, and final: a voice that is not the owner's does not send in his name."""
+    if lang == 'en':
+        return "Sorry, I can only send messages for Chamindu, and that didn't sound like him."
+    return 'සමාවෙන්න, මැසේජ් යවන්න පුළුවන් චමින්දුට විතරයි.'

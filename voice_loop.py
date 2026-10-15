@@ -607,6 +607,8 @@ class Listener:
             self.flush(blocks)
             self.set_state('idle')
             return False
+        # Kept for the speaker check (Day 17): who said this, not only what was said.
+        self.last_audio = audio
         try:
             on_command(text)
         except Exception as error:
@@ -982,7 +984,28 @@ def build_brain(args):
 
     # Set by the wake loop: whether the user is mid-command, and what JARVIS last said,
     # so a remark JARVIS makes on its own is neither said over you nor heard as you.
-    hooks = {'busy': lambda: speech.SPEAKER.speaking, 'spoken': lambda text: None}
+    hooks = {'busy': lambda: speech.SPEAKER.speaking, 'spoken': lambda text: None,
+             'audio': lambda: None}
+
+    # Who is speaking (Day 17). Anyone may ask the time; only the owner's voice may send
+    # something in his name. The request is long enough to judge and must be his; the
+    # "yes" is usually too short to judge, so it is refused only if clearly someone else.
+    import speaker as voices
+
+    def who():
+        try:
+            found, value = voices.verdict(hooks['audio']())
+        except Exception as error:
+            print(f'  speaker check failed: {error}', file=sys.stderr)
+            return 'unknown', None
+        print(f'  speaker: {found}' + (f' ({value})' if value is not None else ''), flush=True)
+        return found, value
+
+    def may_act_outward(strict=True):
+        found, _ = who()
+        if found in ('owner', 'unknown'):
+            return True
+        return found == 'unsure' and not strict
 
     def say_unprompted(text):
         hooks['spoken'](text)
@@ -1067,6 +1090,11 @@ def build_brain(args):
             return responses.say_task_question(runner.task.as_dict(), lang)
         if awaiting:
             task = awaiting.pop('task')
+            outward = any(multistep.Steps.SPEC[s['step']][2] for s in task.steps)
+            if permissions.is_yes(text) and outward and not may_act_outward(strict=False):
+                task.state = 'declined'
+                task.save()
+                return responses.say_not_owner(lang)
             if permissions.is_yes(text):
                 runner.start(task)
                 return ("Starting. I'll tell you when it's done." if lang == 'en'
@@ -1099,6 +1127,10 @@ def build_brain(args):
             return None             # the ordinary path may still manage it
         task = multistep.Task(text, steps, lang)
         task.save()
+        if any(multistep.Steps.SPEC[s['step']][2] for s in steps) and not may_act_outward():
+            task.state = 'declined'
+            task.save()
+            return responses.say_not_owner(lang)
         if multistep.needs_yes(steps):
             awaiting['task'] = task
             return responses.say_plan(task.steps, lang, ask=True)
@@ -1259,6 +1291,13 @@ def build_brain(args):
         # An outstanding question takes precedence: the next utterance answers it.
         if pending:
             lang = pending.get('language', 'si')
+            if permissions.is_yes(text) and not may_act_outward(strict=False):
+                pending.clear()
+                reply = responses.say_not_owner(lang)
+                print(f'  JARVIS: {reply}', flush=True)
+                if speak:
+                    speech.SPEAKER.say(reply)
+                return reply
             if permissions.is_yes(text):
                 reply = send_pending(lang)
                 print(f'  JARVIS: {reply}', flush=True)
@@ -1290,6 +1329,18 @@ def build_brain(args):
                     on_state('speaking')
                 speech.SPEAKER.say(task_reply)
             return task_reply
+
+        # A lone yes or no with no question waiting. Measured on Day 17: "නෑ" went to the
+        # model, which answered an old question from the history -- the user's CV skills.
+        # Every word must be a yes or a no: "කරන්න" (do it) counts as yes, and "ලොක් කරන්න"
+        # (lock it) must still lock.
+        if permissions.only_yes_or_no(text):
+            lang = responses.language_of(text)
+            reply = 'All right.' if lang == 'en' else 'හරි.'
+            print(f'  JARVIS: {reply}', flush=True)
+            if speak:
+                speech.SPEAKER.say(reply)
+            return reply
 
         if agent.wants_deep(text):
             reply = think_deeply(text, responses.language_of(text))
@@ -1326,6 +1377,9 @@ def build_brain(args):
             except Exception as error:
                 print(f'  lookup failed: {error}', file=sys.stderr)
                 reply = responses.say_offline(lang)
+        elif decision['action'] == 'command' and decision['command'] == 'send_message' \
+                and not may_act_outward():
+            reply = responses.say_not_owner(lang)
         elif decision['action'] == 'command' and decision['command'] == 'send_message':
             person = contacts.find(store, decision['text'])
             # The recipient is inside the sentence; without removing it the message sent
@@ -1463,6 +1517,7 @@ def talk_loop(args):
                 log_utterance(audio, '', detected, source='talk')
                 print('  (nothing recognised)\n')
                 continue
+            respond.hooks['audio'] = lambda heard=audio: heard
             reply = respond(text, speak=not args.silent)
             log_utterance(audio, text, detected, source='talk', reply=reply[:300])
             print()
@@ -1479,6 +1534,8 @@ def wake_loop(args):
     ears = Hearing(args.stt, args.model, args.whisper_device)
     listener = Listener(vad, ears, args.device, args.wake_threshold,
                         None if args.lang == 'auto' else args.lang)
+
+    respond.hooks['audio'] = lambda: getattr(listener, 'last_audio', None)
 
     def on_command(text):
         reply = respond(text, speak=not args.silent, on_state=listener.set_state)

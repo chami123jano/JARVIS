@@ -80,6 +80,16 @@ def is_yes(text):
     return len(words) <= 3 and any(word in targets for word in words)
 
 
+def only_yes_or_no(text):
+    """Nothing but agreement or refusal: "ඔව්", "no", "හරි හරි" -- not "ලොක් කරන්න"."""
+    from sinhala import normalize
+    words = normalize(text).split()
+    # Stop words are commands of their own -- stop talking, stop the task.
+    answers = {normalize(word) for word in YES + NO
+               if word not in ('stop', 'cancel', 'wait', 'නවත්වන්න')}
+    return 0 < len(words) <= 3 and all(word in answers for word in words)
+
+
 def is_no(text):
     from sinhala import normalize
     cleaned = normalize(text).strip()

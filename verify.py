@@ -282,7 +282,19 @@ def noise_rejected():
 @check('day 3', 'Sinhala speech synthesis')
 def tts_sinhala():
     import speech
-    data = speech.synthesize('ආයුබෝවන් චමින්දු', speech.SINHALA_VOICE)
+    # A phrase never said before, so the cache cannot answer for the service. With a fixed
+    # phrase this check passed all through the edge-tts outage of 15 Oct 2026.
+    phrase = f'ආයුබෝවන් චමින්දු, පරීක්ෂණය {int(time.time())}'
+    try:
+        data = speech.synthesize(phrase, speech.SINHALA_VOICE)
+    except speech.Offline as error:
+        return WARN, (f'the Sinhala voice service is refusing requests ({str(error)[:40]}); '
+                      'replies fall back to the Windows voice')
+    finally:
+        try:
+            speech.cache_path(phrase, speech.SINHALA_VOICE).unlink()
+        except OSError:
+            pass
     if len(data) < 2000:
         return FAIL, f'only {len(data)} bytes'
     audio = speech.decode(data)
@@ -634,6 +646,23 @@ def remembers():
                   f'{len(mem.unsummarised())} messages not yet summarised')
 
 
+@check('day 17', "Knows who is speaking: only the owner's voice sends")
+def knows_voice():
+    import speaker
+    if not speaker.MODEL.exists():
+        return FAIL, f'voice model missing: {speaker.MODEL.name}'
+    saved = speaker.load_voiceprint()
+    if not saved:
+        return WARN, 'no voiceprint yet: python speaker.py --enroll'
+    clips = sorted((speaker.ROOT / 'data' / 'voice' / 'clips').glob('*.wav'))
+    if clips:
+        found, value = speaker.verdict(speaker.load_wav(clips[0]), saved)
+        if found != 'owner':
+            return FAIL, f'his own recording was judged {found} ({value})'
+    return PASS, (f"voiceprint from {saved['clips']} clips, threshold {saved['threshold']}; "
+                  f'his recording scores {value}')
+
+
 @check('day 26', 'Media: the first result found, keys control playback')
 def plays_music():
     import media
@@ -745,7 +774,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, hardened, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_voice, hardened, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

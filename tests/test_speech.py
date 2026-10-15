@@ -164,3 +164,33 @@ class EmojiTests(unittest.TestCase):
         for piece in pieces:
             self.assertNotIn('🎉', piece)
             self.assertNotIn('😊', piece)
+
+
+class FeatureTests(unittest.TestCase):
+    """Day 17: the voice model's features, computed without a new library."""
+
+    def test_fbank_shape_and_normalisation(self):
+        import numpy
+        import speaker
+        tone = numpy.sin(numpy.arange(16000) * 2 * numpy.pi * 440 / 16000).astype('float32') * .3
+        feats = speaker.fbank(tone)
+        self.assertEqual(feats.shape, (98, 80))           # Kaldi: 1 + (16000 - 400) // 160
+        self.assertLess(abs(float(feats.mean())), 1e-4, 'mean-normalised over time')
+        # Kaldi's mel filters: 440 Hz sits in a low band, 4 kHz far higher up.
+        banks = speaker._mel_banks()
+        band = lambda hz: int(banks[:, round(hz * 512 / 16000)].argmax())
+        self.assertLess(band(440), 20)
+        self.assertGreater(band(4000), 50)
+
+    def test_the_same_voice_scores_high_and_silence_is_refused(self):
+        import numpy
+        import speaker
+        if not speaker.MODEL.exists():
+            self.skipTest('voice model not downloaded')
+        clips = sorted((speaker.ROOT / 'data' / 'voice' / 'clips').glob('*.wav'))
+        if len(clips) < 2:
+            self.skipTest('no recordings')
+        a, b = speaker.embed(speaker.load_wav(clips[0])), speaker.embed(speaker.load_wav(clips[1]))
+        self.assertGreater(float(a @ b), 0.4)
+        with self.assertRaises(ValueError):
+            speaker.embed(numpy.zeros(4000, dtype='float32'))

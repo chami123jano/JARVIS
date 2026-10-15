@@ -200,3 +200,36 @@ class TaskTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SpeakerTests(unittest.TestCase):
+    """Day 17: only the owner's voice sends anything. Voices are faked here; the real
+    scores are in bench_speaker.py and PLAN.md."""
+
+    def test_the_gate_is_on_every_way_to_send(self):
+        source = (Path(__file__).resolve().parents[1] / 'voice_loop.py').read_text(encoding='utf-8')
+        # The request for a message, the yes that sends it, an outward plan, and its yes.
+        self.assertGreaterEqual(source.count('may_act_outward('), 4)
+        import re
+        self.assertRegex(source, re.compile(
+            r"decision\['command'\] == 'send_message'\s*\\\s*and not may_act_outward\(\)"))
+
+    def test_verdicts(self):
+        import numpy
+        import speaker
+        print_ = {'vector': numpy.ones(256, dtype=numpy.float32) / 16, 'threshold': 0.35}
+        with patch.object(speaker, 'embed', return_value=numpy.ones(256) / 16):
+            self.assertEqual(speaker.verdict(numpy.zeros(32000), print_)[0], 'owner')
+        with patch.object(speaker, 'embed', return_value=-numpy.ones(256) / 16):
+            self.assertEqual(speaker.verdict(numpy.zeros(32000), print_)[0], 'other')
+        self.assertEqual(speaker.verdict(numpy.zeros(8000), print_)[0], 'unsure',
+                         'half a second is too short to judge')
+        self.assertEqual(speaker.verdict(None, print_)[0], 'unsure', 'no audio, no judgement')
+
+    def test_a_lone_yes_or_no_is_only_that(self):
+        """"නෑ" with nothing waiting went to the model, which answered an old question."""
+        for text, expected in [('නෑ', True), ('ඔව්', True), ('හරි හරි', True),
+                               ('ලොක් කරන්න', False), ('stop', False), ('නවත්වන්න', False),
+                               ('no thanks', False)]:
+            with self.subTest(text=text):
+                self.assertEqual(permissions.only_yes_or_no(text), expected)

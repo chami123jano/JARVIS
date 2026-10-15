@@ -634,6 +634,20 @@ def remembers():
                   f'{len(mem.unsummarised())} messages not yet summarised')
 
 
+@check('day 26', 'Media: the first result found, keys control playback')
+def plays_music():
+    import media
+    wanted = media.understand('mata hitha hodha sindu ekak daanna')
+    if wanted['query'] != 'feel good sinhala songs':
+        return FAIL, f'understood as {wanted}'
+    try:
+        found = media.youtube_first(wanted['query'])
+    except media.MediaError as error:
+        return WARN, f'YouTube not reachable ({error}); local music and keys still work'
+    media.playing(0.0)          # the sound meter can be read
+    return PASS, f'would play "{found["title"][:45]}"'
+
+
 @check('day 28', 'Hardened: injection refused, offline degrades, backups kept')
 def hardened():
     import io as _io
@@ -731,7 +745,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, hardened, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, hardened, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

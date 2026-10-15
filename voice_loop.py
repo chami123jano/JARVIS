@@ -1151,6 +1151,38 @@ def build_brain(args):
         pc_control.open_app(spoken)
         return responses.say_opened(app['name'].title(), lang)
 
+    def do_play(decision, lang):
+        """Day 26: choose, say what it is, then start it -- after the reply has been
+        spoken, so JARVIS is not talking over the first bars."""
+        import media
+        try:
+            item = media.choose(decision['text'], store)
+        except media.MediaError as error:
+            print(f'  media: {error}', file=sys.stderr)
+            return responses.say_no_music(str(error), lang)
+
+        def start_after_speaking():
+            time.sleep(.5)
+            for _ in range(60):
+                if not speech.SPEAKER.speaking:
+                    break
+                time.sleep(.25)
+            try:
+                media.start(item)
+                media.remember_played(store, item)
+            except Exception as error:
+                print(f'  media: could not start: {error}', file=sys.stderr)
+        threading.Thread(target=start_after_speaking, daemon=True, name='media').start()
+        print(f'  playing {item["source"]}: {item["title"]}', flush=True)
+        return responses.say_playing(item, lang)
+
+    def do_media_key(action):
+        def press(decision, lang):
+            import media
+            media.control(action)
+            return responses.say_media_done(action, lang)
+        return press
+
     def do_look(decision, lang):
         """Day 15: the window in front, the screen, or the latest photo, read by the local
         model. Captured into memory and never saved or sent anywhere."""
@@ -1182,6 +1214,11 @@ def build_brain(args):
         'lock_pc': do_lock,
         'read_messages': do_read_messages,
         'look_screen': do_look,
+        'play_music': do_play,
+        'pause_music': do_media_key('pause'),
+        'resume_music': do_media_key('resume'),
+        'next_song': do_media_key('next'),
+        'previous_song': do_media_key('previous'),
     }
 
     # Commands answered from the live web. Each names the lookup and how to say it, so

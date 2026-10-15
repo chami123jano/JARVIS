@@ -248,6 +248,13 @@ class Tools:
             # An approved skill, run in its own process by skill_host.py.
             import skills
             return skills.call(skills.find(name[len('skill_'):], skills.ACTIVE), dict(args))
+        if name == 'play_music':
+            # The first result, playing -- not a search page (Day 26).
+            import media
+            item = media.choose(str(args['query']).strip()[:200], self.store)
+            media.start(item)
+            media.remember_played(self.store, item)
+            return {'playing': item['title'], 'source': item['source']}
         if name in ('web_search', 'play_music'):
             query = str(args['query']).strip()[:500]
             base = 'https://www.youtube.com/results?search_query=' if name == 'play_music' else 'https://www.google.com/search?q='
@@ -277,7 +284,8 @@ TOOL_DEFINITIONS = {
                       'and cannot be used until the user reads and approves it in the '
                       'console. Say exactly that; never say it is ready.', {'need': 'string'}),
     'web_search': ('Open browser search. Does not retrieve results.', {'query': 'string'}),
-    'play_music': ('Open YouTube search. Does not start playback.', {'query': 'string'}),
+    'play_music': ('Play a song or music: the first YouTube result, playing. The query '
+                   'is what the user asked for, in their words.', {'query': 'string'}),
 }
 
 

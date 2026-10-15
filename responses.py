@@ -25,7 +25,12 @@ def language_of(text):
     if not letters:
         return 'si'
     sinhala = sum(1 for c in letters if SINHALA_RANGE[0] <= c <= SINHALA_RANGE[1])
-    return 'si' if sinhala / len(letters) >= .3 else 'en'
+    if sinhala / len(letters) >= .3:
+        return 'si'
+    # Singlish is Sinhala in Latin letters, and wants a Sinhala answer. Measured on Day
+    # 26: "mata hitha hodha sindu ekak daanna" was answered "Playing ...".
+    from sinhala import singlish_to_script
+    return 'si' if singlish_to_script(text) != text else 'en'
 
 
 def english_clock(moment=None):
@@ -776,3 +781,35 @@ def say_learned(facts, lang=None):
     if lang == 'en':
         return f"I'll remember that. {spoken}."
     return f'මම ඒක මතක තියාගන්නම්. {spoken}.'
+
+
+# ---------------------------------------------------------------- media (Day 26)
+
+def short_title(title, limit=60):
+    """A video title as it can be said: no hashtags, no '| channel', not too long."""
+    title = re.split(r'\s[|#]|\[', str(title))[0].strip(' -|')
+    return title[:limit].rsplit(' ', 1)[0] if len(title) > limit else title
+
+
+def say_playing(item, lang='si'):
+    title = short_title(item.get('title', ''))
+    again = item.get('source') == 'history'
+    if lang == 'en':
+        return (f'Playing it again. {title}.' if again else f'Playing {title}.')
+    return (f'හරි, ආයෙත් දානවා. {title}.' if again else f'හරි, දානවා. {title}.')
+
+
+def say_media_done(action, lang='si'):
+    if lang == 'en':
+        return {'pause': 'Paused.', 'resume': 'Carrying on.', 'next': 'Next one.',
+                'previous': 'The one before.'}.get(action, 'Done.')
+    return {'pause': 'නැවැත්තුවා.', 'resume': 'හරි.', 'next': 'ඊළඟ එක.',
+            'previous': 'කලින් එක.'}.get(action, 'හරි.')
+
+
+def say_no_music(reason, lang='si'):
+    if lang == 'en':
+        return f'I could not play that. {reason}.'
+    if 'nothing has been played' in reason:
+        return 'තාම මොකුත් සින්දු දාලා නෑ.'
+    return 'ඒ සින්දුව දාන්න බැරි වුණා.'

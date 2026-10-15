@@ -1429,6 +1429,43 @@ Found by running it:
 
 ---
 
+#### ✅ Day 26 complete — "mata hitha hodha sindu ekak daanna" plays actual music
+
+Measured by what Windows reports the browser's sound to be, not assumed:
+
+| said | browser level |
+|---|---|
+| (before) | 0.0 |
+| "mata hitha hodha sindu ekak daanna" | 0.47 -- sound in 8.1 s |
+| "pause the music" | 0.0 |
+| "resume the music" | 0.67 |
+| "ඊළඟ සින්දුව" | 0.10, the next track |
+| "සින්දුව නවත්වන්න" | 0.0 |
+
+`media.py`:
+  - **The first YouTube result, opened where it plays**, not a search page. Moods become a
+    search ("හිත හොඳ" -> feel-good Sinhala songs); names are searched as names.
+  - **Pause, carry on, next, previous** are the media keys, so they work on whatever plays.
+  - **"ඊයේ ඇහුව සින්දුව ආයෙත් දාන්න"** replays the last song from before today: everything
+    played is kept, fifty items.
+  - **JARVIS says what it is playing, then the music starts**, so it does not talk over it.
+  - Local music by file name, if there is any (there is none here today).
+  - The chat model's play_music tool does the same, rather than opening a search page.
+
+Not done: **Spotify** (needs your account sign-in) and **auto-pause on presence** (Day 16
+does not exist yet). Music playing while JARVIS listens for its name will make the wake
+word harder to hear.
+
+Found by doing it:
+  - **"mata" (to me) matched "mathak" (remind)**: a short keyword at 85% similarity. Any
+    sentence starting "mata ..." could become a reminder -- a latent bug since Day 19.
+    Short keywords now have to be near-exact.
+  - **Music commands fought each other by sound** -- "dukha sinduwak danna" (a sad song)
+    was nearest to "kalin sinduwa" (previous song). A sentence about a song is now decided
+    by its words.
+  - **Singlish was answered in English**, being in Latin letters. Two or more recognisable
+    Singlish words now mean a Sinhala reply.
+
 ### Day 26 — Media
 
 **Goal:** real playback control, not a search page.

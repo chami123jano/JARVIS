@@ -122,6 +122,22 @@ COMMANDS = {
         'ada vistara kiyanna', 'davase vistara kiyanna', 'suba udesanak',
         'briefing eka denna', 'brief me', 'morning briefing', 'good morning',
     ],
+    'pause_music': [
+        'සින්දුව නවත්වන්න', 'සින්දුව pause කරන්න', 'sinduwa nawaththanna',
+        'sinduwa pause karanna', 'pause the music', 'pause the song', 'pause music',
+    ],
+    'resume_music': [
+        'සින්දුව දිගටම දාන්න', 'sinduwa digatama danna', 'resume the music',
+        'continue the song', 'resume music', 'unpause',
+    ],
+    'next_song': [
+        'ඊළඟ සින්දුව', 'ඊළඟ සින්දුව දාන්න', 'eelanga sinduwa', 'next song',
+        'skip this song', 'play the next song',
+    ],
+    'previous_song': [
+        'කලින් සින්දුව', 'කලින් සින්දුව දාන්න', 'kalin sinduwa', 'previous song',
+        'play the previous song', 'go back a song',
+    ],
     'look_screen': [
         'මේකේ මොකක්ද වැරැද්ද', 'මේ error එක මොකක්ද', 'screen එකේ මොකක්ද තියෙන්නේ',
         'මේක කියවන්න', 'මේ ෆොටෝ එක කියවන්න', 'මේ බිල බලන්න',
@@ -209,10 +225,36 @@ def has_keyword(text, command):
         target = normalize(keyword).replace(' ', '')
         if not target:
             continue
+        # Short keywords must be near-exact. At .85, "mata" (to me) matched "matak"
+        # (remind), so "mata hitha hodha sindu ekak daanna" was routed as a reminder.
+        needed = .95 if len(target) <= 5 else .85
         for word in words:
-            if SequenceMatcher(None, word, target).ratio() >= .85:
+            if SequenceMatcher(None, word, target).ratio() >= needed:
                 return True
     return False
+
+
+# Music is decided by its words, not by sound: "dukha sinduwak danna" (a sad song)
+# sounded closest to "kalin sinduwa" (previous song).
+SONG_WORDS = re.compile(r'sindu|සින්දු|සිංදු|\bsongs?\b|\bmusic\b|මියුසික්', re.I)
+MUSIC_ACTIONS = [
+    ('pause_music', re.compile(r'pause|නවත්ව|නවත්ත|nawath|navath|stop the', re.I)),
+    ('next_song', re.compile(r'\bnext\b|\bskip\b|ඊළඟ|eelanga|ilanga', re.I)),
+    ('resume_music', re.compile(r'resume|unpause|continue|දිගටම|digatama', re.I)),
+    ('previous_song', re.compile(r'previous|go back|කලින් සින්දුව|kalin sinduwa', re.I)),
+]
+HEARD_BEFORE = re.compile(r'ahapu|ඇහුව|listened|yesterday|ඊයේ|iye', re.I)
+
+
+def music_intent(text):
+    """The music command this sentence asks for, or None if it is not about music."""
+    text = str(text)
+    if not SONG_WORDS.search(text) and not re.match(r'\s*play\s+\w', text, re.I):
+        return None
+    for command, words in MUSIC_ACTIONS:
+        if words.search(text) and not (command == 'previous_song' and HEARD_BEFORE.search(text)):
+            return command
+    return 'play_music'
 
 
 # Words that say nothing about which command is meant.
@@ -551,6 +593,9 @@ def route(text):
         return {'action': 'unclear', 'reason': 'nothing recognisable', 'text': text,
                 'phonetic': '', 'language': language}
     name, score, second, second_score = match(text)
+    music = music_intent(text)
+    if music:
+        name, score, second, second_score = music, 1.0, name, 0.0
     result = {'text': text, 'phonetic': cleaned, 'command': name, 'score': round(score, 3),
               'runner_up': second, 'runner_up_score': round(second_score, 3),
               # Replies follow the language they were asked in.
@@ -639,6 +684,8 @@ CARD_TITLES = {
     'capabilities': 'What can you do', 'read_messages': 'What messages came',
     'briefing': 'Briefing now, or set its time', 'look_screen': "What's on screen / this error",
     'make_skill': 'Write a new tool', 'task_status': 'How is the task going',
+    'pause_music': 'Pause the music', 'resume_music': 'Carry on playing',
+    'next_song': 'Next song', 'previous_song': 'Previous song',
     'stop': 'Stop / be quiet',
 }
 

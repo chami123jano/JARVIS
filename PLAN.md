@@ -1706,6 +1706,59 @@ the README matches the code.
 
 ## PHASE H — Beyond (Days 29–30)
 
+#### ✅ Day 29 complete — aeroplane mode, and it still speaks Sinhala
+
+With every network connection cut, JARVIS said "ආයුබෝවන් ... දැන් වෙලාව හවස පහයි" aloud:
+Microsoft's voice blocked, and `offline_voice.py` speaking instead. On the CPU it makes 1.7 s
+of speech in 0.08 s.
+
+**The voice was trained here**, as the plan said: Piper, fine-tuned on this RTX 4060 from
+Google's openly licensed Sinhala recordings (OpenSLR 30, CC BY-SA 4.0). Speaker sin_6314,
+117 clips, 14 minutes -- the speaker with the most audio. **All twelve speakers in the set
+are women** (pitch 183-244 Hz), so the offline voice is female; there is no openly licensed
+male Sinhala speech. English "lessac" was the starting weights only -- it speaks Sinhala.
+1,500 epochs, 2 h 10 min.
+
+Measured, since nobody here could listen (`bench_offline_voice.py`: ten things JARVIS says,
+spoken, then transcribed by Google's si-LK recogniser):
+
+| voice | mean | understood |
+|---|---|---|
+| today's fallback: Windows voice reading romanised Sinhala | 0.31 | 0 / 10 |
+| offline voice, epoch 50 (5 minutes of training) | 0.91 | 10 / 10 |
+| epoch 250 | 0.93 | 10 / 10 |
+| epoch 700 | 0.95 | 10 / 10 |
+| **epoch 1,500, installed** | **0.90 - 0.94** | **9 - 10 / 10** |
+
+The last row is the same voice scored twice: the recogniser itself varies by about 0.04
+between runs. Training error stopped improving after about epoch 800.
+
+`speech.py`: when the online voice fails, Sinhala goes to this voice and English to the
+Windows one, in order, and "stop" still interrupts. Sameera stays the main voice.
+
+Getting Piper to train on Windows with no WSL (`voice-training/README.md` has the recipe):
+  - the 2022 checkpoint would not load in PyTorch's safe mode (a Linux path object in its
+    settings) -- cleaned through the safe loader, never by switching safety off;
+  - espeak writes ඳ ඟ ඹ ඬ with superscript nasals the voice had no symbol for; Piper
+    dropped them silently, and "අඳුර" would have lost its nasal. Mapped to n, ŋ, m, the
+    same at training and speaking;
+  - Piper saved an 846 MB checkpoint after every epoch -- 5 GB in ninety seconds, 2.5 TB
+    over the run. Every 50 epochs now;
+  - worker processes ended the first trial with an access violation; PyTorch 2.14's
+    default ONNX exporter fails on Piper's spline (the classic one works); an antivirus
+    lock broke the PyTorch install until it was downloaded first.
+
+Not done: **fine-tuning Whisper on your own commands** (item 5). Google's recogniser is the
+main ear and scores 0.94; it can wait for two hundred recordings of your voice.
+
+**Your name.** He spells it චමිදූ, not චමින්දු, which every Sinhala greeting and test
+used until 16 Oct. Corrected throughout the code; the entries above record what was said
+at the time. The offline voice says it as "චමි දුව" to the recogniser -- close, and the
+hardest word, since it is in none of the training recordings.
+
+Found the measurements had been flattering an old claim: Day 16 said the romanised
+fallback "is understood". By the recogniser, none of it was.
+
 ### Day 29 — Fully offline Sinhala speech
 
 **Goal:** JARVIS speaks Sinhala with no internet at all.

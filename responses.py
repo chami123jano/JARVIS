@@ -821,12 +821,12 @@ def say_not_owner(lang='si'):
     """Polite, and final: a voice that is not the owner's does not send in his name."""
     if lang == 'en':
         return "Sorry, I can only send messages for Chamindu, and that didn't sound like him."
-    return 'සමාවෙන්න, මැසේජ් යවන්න පුළුවන් චමින්දුට විතරයි.'
+    return 'සමාවෙන්න, මැසේජ් යවන්න පුළුවන් චමිදූට විතරයි.'
 
 
 # ---------------------------------------------------------------- presence (Day 16)
 
-def say_welcome_back(name='චමින්දු', waiting=0, lang='si'):
+def say_welcome_back(name='චමිදූ', waiting=0, lang='si'):
     """Said on a return after a real absence. The greeting alone is a fixed phrase, so it
     is cached and still spoken in Sinhala when the voice service is down."""
     if lang == 'en':

@@ -284,7 +284,7 @@ def tts_sinhala():
     import speech
     # A phrase never said before, so the cache cannot answer for the service. With a fixed
     # phrase this check passed all through the edge-tts outage of 15 Oct 2026.
-    phrase = f'ආයුබෝවන් චමින්දු, පරීක්ෂණය {int(time.time())}'
+    phrase = f'ආයුබෝවන් චමිදූ, පරීක්ෂණය {int(time.time())}'
     try:
         data = speech.synthesize(phrase, speech.SINHALA_VOICE)
     except speech.Offline as error:
@@ -304,9 +304,9 @@ def tts_sinhala():
 @check('day 3', 'Cache avoids a second request')
 def tts_cache():
     import speech
-    speech.synthesize('ආයුබෝවන් චමින්දු', speech.SINHALA_VOICE)
+    speech.synthesize('ආයුබෝවන් චමිදූ', speech.SINHALA_VOICE)
     started = time.monotonic()
-    speech.synthesize('ආයුබෝවන් චමින්දු', speech.SINHALA_VOICE)
+    speech.synthesize('ආයුබෝවන් චමිදූ', speech.SINHALA_VOICE)
     elapsed = time.monotonic() - started
     if elapsed > .25:
         return FAIL, f'cached call took {elapsed:.3f}s'
@@ -684,7 +684,7 @@ def offline_sinhala():
     sys.path.insert(0, str(ROOT / 'tests'))
     from offline import unplugged
     with unplugged() as attempts:
-        audio = offline_voice.synthesize('ආයුබෝවන් චමින්දු.', speech.SAMPLE_RATE)
+        audio = offline_voice.synthesize('ආයුබෝවන් චමිදූ.', speech.SAMPLE_RATE)
     if attempts or float(abs(audio).max()) < 0.05:
         return FAIL, 'no Sinhala audio without the network'
     return PASS, f'{len(audio) / speech.SAMPLE_RATE:.1f}s of Sinhala with no network'

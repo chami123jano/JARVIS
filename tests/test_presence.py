@@ -112,9 +112,9 @@ class RealSignalTests(unittest.TestCase):
 
 class WordingTests(unittest.TestCase):
     def test_welcome_back(self):
-        self.assertEqual(responses.say_welcome_back(), 'ආයුබෝවන් චමින්දු')
-        self.assertIn('දෙකක්', responses.say_welcome_back('චමින්දු', 2))
-        self.assertEqual(responses.say_welcome_back('චමින්දු', 0, 'en'), 'Welcome back, Chamindu.')
+        self.assertEqual(responses.say_welcome_back(), 'ආයුබෝවන් චමිදූ')
+        self.assertIn('දෙකක්', responses.say_welcome_back('චමිදූ', 2))
+        self.assertEqual(responses.say_welcome_back('චමිදූ', 0, 'en'), 'Welcome back, Chamindu.')
 
     def test_messages_wait_while_away(self):
         import ast

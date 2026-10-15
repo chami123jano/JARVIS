@@ -49,8 +49,12 @@ class BriefingTests(UnpluggedCase):
     def test_the_briefing_keeps_what_is_local(self):
         with tempfile.TemporaryDirectory() as folder, unplugged():
             store = Store(Path(folder) / 'b.db')
-            store.add('reminder', 'බැංකුවට යන්න', due=time.strftime('%Y-%m-%dT23:30:00'))
-            text = routines.briefing(store, 'si')
+            # A fixed morning, not the clock: run after 23:30 this once failed, the
+            # reminder having already passed.
+            import datetime as dt
+            morning = dt.datetime.now().astimezone().replace(hour=8, minute=0)
+            store.add('reminder', 'බැංකුවට යන්න', due=morning.replace(hour=15).isoformat())
+            text = routines.briefing(store, 'si', moment=morning)
         self.assertIn('වෙලාව', text)
         self.assertIn('බැංකුවට යන්න', text)
         self.assertIn(responses.say_offline('si'), text)
@@ -149,7 +153,7 @@ class OfflineSinhalaVoiceTests(UnpluggedCase):
         if not offline_voice.available():
             self.skipTest('offline voice not installed yet')
         with unplugged() as attempts:
-            audio = offline_voice.synthesize('ආයුබෝවන් චමින්දු.', speech.SAMPLE_RATE)
+            audio = offline_voice.synthesize('ආයුබෝවන් චමිදූ.', speech.SAMPLE_RATE)
         self.assertGreater(len(audio) / speech.SAMPLE_RATE, 0.5)
         self.assertGreater(float(abs(audio).max()), 0.05, 'not silence')
         self.assertEqual(attempts, [])

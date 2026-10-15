@@ -363,10 +363,10 @@ def main():
             print('  ', SPEAKER.offline_fallback('Speech service unreachable'))
             return
         print('\nSpeaking aloud...')
-        print('  ', say('ආයුබෝවන් චමින්දු. Systems are ready.'))
+        print('  ', say('ආයුබෝවන් චමිදූ. Systems are ready.'))
         return
 
-    text = ' '.join(args.text) or 'ආයුබෝවන් චමින්දු. මම ජාවිස්.'
+    text = ' '.join(args.text) or 'ආයුබෝවන් චමිදූ. මම ජාවිස්.'
     if args.no_cache:
         path = cache_path(f'{text}|{args.rate}', SINHALA_VOICE if is_sinhala(text) else ENGLISH_VOICE)
         path.unlink(missing_ok=True)

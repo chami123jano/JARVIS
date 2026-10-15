@@ -1,6 +1,6 @@
 """JARVIS's own Sinhala voice, with no internet at all (Day 29).
 
-    python offline_voice.py "ආයුබෝවන් චමින්දු"     say it with the offline voice
+    python offline_voice.py "ආයුබෝවන් චමිදූ"     say it with the offline voice
     python offline_voice.py --status
 
 A Piper voice trained on this computer from Google's openly licensed Sinhala recordings

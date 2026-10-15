@@ -17,7 +17,7 @@ from speech import ENGLISH_VOICE, SINHALA_VOICE, Offline, Speaker, cache_path, i
 
 class LanguageRoutingTests(unittest.TestCase):
     def test_detects_sinhala(self):
-        self.assertTrue(is_sinhala('ආයුබෝවන් චමින්දු'))
+        self.assertTrue(is_sinhala('ආයුබෝවන් චමිදූ'))
         self.assertTrue(is_sinhala('CPU is at 40% ලෙස තිබේ'))   # mixed, mostly Sinhala
         self.assertFalse(is_sinhala('hello there'))
         self.assertFalse(is_sinhala('CPU 40% RAM 60%'))

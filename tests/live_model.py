@@ -70,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='jarvis-model-') as folder:
     print(f'PASS: trivial request answered in {seconds:.1f}s -> {job["answer"][:100]}\n')
 
     # 4. Sinhala in, Sinhala out.
-    job, seconds, _ = run(agent, 'මගේ නම චමින්දු. මට සිංහලෙන් උත්තර දෙන්න. ඔබට කරන්න පුළුවන් මොනවද?', limit=200)
+    job, seconds, _ = run(agent, 'මගේ නම චමිදූ. මට සිංහලෙන් උත්තර දෙන්න. ඔබට කරන්න පුළුවන් මොනවද?', limit=200)
     print(f'[4] sinhala  {job["state"]}  {seconds:.1f}s')
     assert job['state'] == 'done', job['answer']
     sinhala = sum(1 for character in job['answer'] if '඀' <= character <= '෿')

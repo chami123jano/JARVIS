@@ -1057,7 +1057,7 @@ def build_brain(args):
         text = proactive.briefing_on_arrival() if first else None
         quiet = daily.in_quiet_hours(daily.now_local(), daily.settings(store)['quiet_hours'])
         if text is None and absence >= here.GREET_AFTER and not quiet:
-            text = responses.say_welcome_back(store.config('owner_name', 'චමින්දු'),
+            text = responses.say_welcome_back(store.config('owner_name', 'චමිදූ'),
                                               len(inbox), lang)
         if text:
             say_unprompted(text)

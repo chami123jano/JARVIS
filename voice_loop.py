@@ -444,11 +444,18 @@ def beep(frequency=880, seconds=.15, volume=.5):
         fade = int(len(tone) * .15)
         tone[:fade] *= numpy.linspace(0, 1, fade)
         tone[-fade:] *= numpy.linspace(1, 0, fade)
-        sounddevice.play(tone, SAMPLE_RATE, blocking=True)
+        # Not blocking=True: that waits on the sound device with no limit, and a stalled
+        # device froze the whole loop after a wake word (16 Oct). Play, then move on.
+        sounddevice.play(tone, SAMPLE_RATE)
+        time.sleep(seconds + 0.05)
         return True
     except Exception as error:
         print(f'  (beep failed: {type(error).__name__}: {str(error)[:90]})', file=sys.stderr)
         return False
+
+
+# A command taking longer than this has hung somewhere; the stacks go to the log.
+HANG_SECONDS = 90
 
 
 class Listener:
@@ -585,17 +592,33 @@ class Listener:
         return numpy.concatenate(collected)
 
     def handle(self, blocks, on_command, prompt_beep=True):
+        """One command, with a watchdog: should any step hang -- as one did after a wake
+        word on 16 Oct, silently, until JARVIS was quit -- every thread's stack is written
+        to the log after HANG_SECONDS, so the next hang says where it is."""
+        import faulthandler
+        faulthandler.dump_traceback_later(HANG_SECONDS, repeat=False, file=sys.stderr)
+        started = time.monotonic()
+        try:
+            return self.handle_command(blocks, on_command, prompt_beep)
+        finally:
+            faulthandler.cancel_dump_traceback_later()
+            print(f'  (command took {time.monotonic() - started:.1f}s)', flush=True)
+
+    def handle_command(self, blocks, on_command, prompt_beep=True):
         """One command: record, transcribe, act, speak."""
         if prompt_beep:
             beep()
         # Discard the beep and anything else already buffered, so recording starts clean.
         self.flush(blocks)
         self.set_state('listening')
+        print('  [listening for the command]', flush=True)
         audio = self.record_command(blocks)
         if audio is None:
+            print('  (no speech after the wake word)', flush=True)
             self.set_state('idle')
             return False
         self.set_state('thinking')
+        print(f'  [transcribing {len(audio)/SAMPLE_RATE:.1f}s]', flush=True)
         text, elapsed, info = self.ears.transcribe(audio, self.language)
         detected = getattr(info, 'language', '?')
         print(f'  heard [{len(audio)/SAMPLE_RATE:.1f}s, {elapsed:.2f}s, {detected}]: {text}', flush=True)
@@ -998,7 +1021,30 @@ def build_brain(args):
     # "yes" is usually too short to judge, so it is refused only if clearly someone else.
     import speaker as voices
 
+    def preload_offline_voice():
+        try:
+            import offline_voice
+            if offline_voice.available():
+                offline_voice.voice()
+        except Exception as error:
+            print(f'  offline voice not loaded: {error}', file=sys.stderr)
+
+    # A request typed in the console: no voice to judge, and it comes from the owner's own
+    # screen, behind the console's session token. Without this, the last thing the
+    # microphone heard would have been judged in its place.
+    typed = threading.local()
+
+    def answer_typed(text, speak=True):
+        typed.active = True
+        try:
+            return respond(text, speak=speak)
+        finally:
+            typed.active = False
+
     def who():
+        if getattr(typed, 'active', False):
+            print('  speaker: typed in the console', flush=True)
+            return 'owner', None
         try:
             found, value = voices.verdict(hooks['audio']())
         except Exception as error:
@@ -1197,7 +1243,9 @@ def build_brain(args):
         """Start speaking first: reminders and routines, and arriving messages."""
         # The console's live picture (Day 24): state, microphone level, subtitles.
         import live
-        live.serve(speaking=lambda: speech.SPEAKER.speaking)
+        live.serve(speaking=lambda: speech.SPEAKER.speaking, answer=answer_typed)
+        # Load the offline voice now, not on the first reply (2 s, measured 16 Oct).
+        threading.Thread(target=preload_offline_voice, daemon=True, name='voice-preload').start()
         # Index anything saved while JARVIS was off, so it can be found by meaning.
         agent.memory.reindex_in_background()
         # Your files under D:\me (Day 13): only what changed is read, every ten minutes.

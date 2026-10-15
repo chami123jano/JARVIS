@@ -18,6 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import memory
 import responses
 from agent import Agent
+import agent as agent_module
+agent_module.HOUSEKEEPING_QUIET = 0     # the real wait is for a person; not here
 from assistant_core import Store, Tools
 
 GLOSSES = {

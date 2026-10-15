@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import agent as agent_module
+agent_module.HOUSEKEEPING_QUIET = 0     # the real wait is for a person; not here
 import bench_think
 import responses
 from agent import Agent
@@ -100,7 +101,9 @@ class SwapBackTests(DeepCase):
         self.assertEqual(job['answer'], 'Forty-two.')
         bodies = [call.kwargs['json'] for call in post.call_args_list]
         self.assertIn({'model': 'gpt-oss:20b', 'keep_alive': 0}, bodies)
-        self.assertIn({'model': 'qwen3.5:9b', 'keep_alive': '30m'}, bodies)
+        self.assertIn({'model': 'qwen3.5:9b', 'keep_alive': '30m',
+                       'options': {'num_ctx': 8192}}, bodies,
+                      'reloaded at the size every fast call asks for, or it loads twice')
         labels = [e['label'] for e in job['events']]
         self.assertIn('Loading the deep brain', labels, 'the swap is announced, not hidden')
         self.assertIn('Fast brain back', labels)

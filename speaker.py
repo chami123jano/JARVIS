@@ -140,9 +140,9 @@ def owner_set():
     through that microphone. Live clips under LIVE_FLOOR are left out: four of them, from
     one minute of wake-word testing, were JARVIS or the room (0.04-0.13).
     """
-    session = [load_wav(c) for c in owner_clips() if c.parent.name == 'clips']
-    base, _ = voiceprint_of(session)
-    chosen = list(session)
+    recorded = [load_wav(c) for c in owner_clips() if c.parent.name == 'clips']
+    base, _ = voiceprint_of(recorded)
+    chosen = list(recorded)
     for clip in owner_clips():
         if clip.parent.name != 'live':
             continue

@@ -171,7 +171,7 @@ async function pollJob() {
       activeJob = null; $('#working').hidden = true; $('#stopButton').hidden = true; $('#sendButton').disabled = false;
       streamText('');
       $('#inputStatus').textContent = 'READY WHEN YOU ARE'; message('assistant', job.answer, job.state === 'error');
-      setMode(job.state === 'error' ? 'error' : 'standby'); if (job.state === 'done') speak(job.answer);
+      setMode(job.state === 'error' ? 'error' : 'standby'); if (job.state === 'done' && !job.spoken) speak(job.answer);   // the voice loop already said it
       refresh(); return;
     }
   } catch (error) { $('#workingLabel').textContent = 'Connection interrupted. Retrying...'; }

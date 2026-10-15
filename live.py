@@ -13,6 +13,7 @@ import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 PORT = 4191
 LEVELS = 64          # about three seconds of microphone, at twenty a second
@@ -68,9 +69,69 @@ class ExclusiveServer(ThreadingHTTPServer):
     allow_reuse_address = False
 
 
-def serve(live=LIVE, speaking=lambda: False, port=PORT):
-    """Serve the live picture on 127.0.0.1 in a background thread. Returns the server."""
+TOKEN_FILE = Path(__file__).resolve().parent / 'data' / 'live.token'
+
+
+def token():
+    """The secret the console must show to send a request: written by the voice loop when
+    it starts, readable only by programs that can read this user's files."""
+    try:
+        return TOKEN_FILE.read_text(encoding='ascii').strip()
+    except OSError:
+        return ''
+
+
+def ask(text, speak=True, port=None, timeout=240):
+    """Send a typed request to the running voice loop (Day 24, console). Returns the reply,
+    or None if the voice loop is not running."""
+    import urllib.request
+    secret = token()
+    if not secret:
+        return None
+    request = urllib.request.Request(
+        f'http://127.0.0.1:{port or PORT}/ask', method='POST',
+        data=json.dumps({'text': text, 'speak': bool(speak)}).encode('utf-8'),
+        headers={'Content-Type': 'application/json', 'X-Live-Token': secret})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as reply:
+            return json.loads(reply.read()).get('reply', '')
+    except OSError:
+        return None
+
+
+def serve(live=LIVE, speaking=lambda: False, port=PORT, answer=None, token_file=None):
+    """Serve the live picture on 127.0.0.1 in a background thread. Returns the server.
+
+    answer(text, speak) -> reply, if given, handles typed requests from the console on
+    POST /ask: the same brain as the microphone, so typing "sinduwak play karanna" plays a
+    song rather than going straight to the chat model, which invented one.
+    """
+    import secrets
+    secret = secrets.token_hex(16)
+
     class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            size = int(self.headers.get('Content-Length', '0') or 0)
+            body = self.rfile.read(min(size, 20000)) if size else b''
+            if self.path != '/ask' or answer is None or \
+                    self.headers.get('Host', '') not in (f'127.0.0.1:{port}', f'localhost:{port}') or \
+                    self.headers.get('X-Live-Token', '') != secret:
+                self.send_response(403)
+                self.end_headers()
+                return
+            try:
+                request = json.loads(body or b'{}')
+                reply = answer(str(request.get('text', ''))[:12000], bool(request.get('speak', True)))
+                data, status = {'reply': reply}, 200
+            except Exception as error:      # reported to the console, never raised
+                data, status = {'error': str(error)[:300]}, 500
+            payload = json.dumps(data, ensure_ascii=False).encode('utf-8')
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
         def do_GET(self):
             if self.path.split('?')[0] != '/live' or \
                     self.headers.get('Host', '') not in (f'127.0.0.1:{port}', f'localhost:{port}'):
@@ -92,5 +153,9 @@ def serve(live=LIVE, speaking=lambda: False, port=PORT):
     except OSError:
         return None          # already served -- a second copy, or a test
     server.daemon_threads = True
+    if answer is not None:
+        target = Path(token_file or TOKEN_FILE)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(secret, encoding='ascii')
     threading.Thread(target=server.serve_forever, daemon=True, name='live').start()
     return server

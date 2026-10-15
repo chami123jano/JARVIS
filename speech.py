@@ -33,6 +33,8 @@ ENGLISH_VOICE = 'en-GB-RyanNeural'
 SAMPLE_RATE = 24000          # what the endpoint returns
 # Offline, a Sinhala reply this short is read aloud in Latin letters; longer is too garbled.
 SPEAK_ROMANISED_UP_TO = 8
+# After a failure, the online voice is tried again only after this long.
+ONLINE_RETRY_SECONDS = 15 * 60
 
 
 def speakable_roman(text):
@@ -186,6 +188,9 @@ class Speaker:
         self.cancelled_through = 0
         self.speaking = False
         self.last_error = ''
+        # When the online voice last failed. Measured 16 Oct: every reply waited 1.4 s for
+        # a refusal before the offline voice began; now the next ones skip it.
+        self.online_down_until = 0.0
 
     def take_number(self):
         with self.state:
@@ -232,15 +237,22 @@ class Speaker:
         with self.lock:
             self.speaking = True
             spoken, offline, said = [], False, 0
+            parts = list(segments(text))
             try:
-                for voice, piece in segments(text):
+                for voice, piece in parts:
                     if self.is_cancelled(number):
                         return {'spoken': said > 0, 'reason': 'interrupted', 'pieces': said}
+                    # Known to be down, and not in the cache: do not wait for it again.
+                    if time.monotonic() < self.online_down_until and \
+                            not cache_path(piece, voice).exists():
+                        offline = True
+                        break
                     try:
                         audio = decode(synthesize(piece, voice, rate))
                     except Offline as error:
                         offline = True
                         self.last_error = str(error)
+                        self.online_down_until = time.monotonic() + ONLINE_RETRY_SECONDS
                         break
                     # Fetching takes over a second on a cold cache. Re-check before
                     # playing, or a stop issued during the fetch is ignored and JARVIS
@@ -252,7 +264,9 @@ class Speaker:
                     said += 1
                     spoken.append(voice)
                 if offline:
-                    result = self.offline_fallback(text, number) if fallback else {'spoken': False}
+                    # Only what has not been said yet -- not the whole reply again.
+                    rest = ' '.join(piece for _, piece in parts[said:])
+                    result = self.offline_fallback(rest, number) if fallback else {'spoken': False}
                     result.update(reason='offline', detail=self.last_error, pieces=said)
                     return result
                 return {'spoken': True, 'reason': 'ok', 'pieces': said,

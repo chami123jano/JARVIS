@@ -241,7 +241,12 @@ def create_server(port=4190, data_dir=None):
                     prompt = str(body.get('prompt', '')).strip()
                     if not prompt or len(prompt) > 12000:
                         raise ValueError('Enter a request under 12,000 characters')
-                    return self.send({'id': agent.start(prompt)})
+                    # Through the voice loop's brain -- the router first, as for speech --
+                    # rather than straight to the model, which invented a song for
+                    # "sinduwak play karanna" (16 Oct). Spoken there, if voice is on here.
+                    import live
+                    aloud = bool(store.config('voice_enabled', False))
+                    return self.send({'id': agent.relay(prompt, lambda text: live.ask(text, aloud))})
                 if path == '/api/stop':
                     agent.stop(body['id'])
                     speak_stop()

@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import agent as agent_module
 import documents
+documents.PAUSE_BETWEEN_FILES = 0       # the pause protects a live microphone; none here
 import memory
 from agent import Agent
 from assistant_core import Store, Tools

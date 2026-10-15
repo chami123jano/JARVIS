@@ -30,7 +30,9 @@ from pathlib import Path
 ROOTS = [r'D:\me']
 SKIP_DIRS = {'node_modules', '.git', '.venv', 'venv', '__pycache__', 'dist', 'build',
              'target', '.next', 'blobs', 'data', '.gradle', '.idea', 'bin', 'obj', 'vendor',
-             'coverage', 'site-packages', 'workspace'}
+             'coverage', 'site-packages', 'workspace',
+             # Training the offline voice (Day 29): gigabytes of tools, not your documents.
+             'piper-train', 'piper1-gpl'}
 SKIP_PREFIXES = ('.', 'apache-tomcat')
 TYPES = {'.md', '.txt', '.pdf', '.py', '.js', '.jsx', '.ts', '.tsx', '.java', '.html',
          '.css', '.json', '.csv', '.sql', '.php'}
@@ -44,6 +46,7 @@ CHUNK_LINES, OVERLAP = 40, 5
 CHUNK_CHARS = 1800
 TOP = 6
 RESCAN_SECONDS = 600
+PAUSE_BETWEEN_FILES = 0.2
 SINHALA = re.compile('[\u0d80-\u0dff]')
 
 
@@ -151,6 +154,9 @@ class Library:
                     report['unchanged'] += 1
                     continue
                 count, skipped = self.index_file(path, stat)
+                # A breath between files: re-reading 268 at once starved the microphone
+                # ("input overflow" in the voice log, 16 Oct).
+                time.sleep(PAUSE_BETWEEN_FILES)
                 report['skipped' if skipped else 'read'] += 1
                 on_file(path, count)
             gone = [p for p in known if p not in seen]

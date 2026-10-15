@@ -405,13 +405,15 @@ def ollama_writer(store=None, endpoint='http://127.0.0.1:11434'):
 
     def release():
         """Unload the deep model, so the fast brain is back for the next command."""
+        import memory
         try:
             deep = (store.config('deep_model', DEEP_MODEL) if store else DEEP_MODEL)
             requests.post(endpoint + '/api/generate', json={'model': deep, 'keep_alive': 0},
                           timeout=30)
             if store and store.config('model', ''):
                 requests.post(endpoint + '/api/generate',
-                              json={'model': store.config('model'), 'keep_alive': '30m'},
+                              json={'model': store.config('model'), 'keep_alive': '30m',
+                                    'options': {'num_ctx': memory.FAST_CTX}},
                               timeout=120)
         except Exception:
             pass

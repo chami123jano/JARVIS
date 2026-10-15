@@ -1791,6 +1791,28 @@ fallback "is understood". By the recogniser, none of it was.
 
 ---
 
+#### ✅ Polish round complete (16 Oct) — make what exists work before building more
+
+Asked for after a night of real use: *"why this so dumb… take too much time… reply voice came
+long time after the chat reply… hey jarvis didn't work"*. Measured, then fixed:
+
+| Complaint | Cause found | Fix | After |
+|---|---|---|---|
+| Slow (up to 16 s) | Ollama reloaded qwen on almost every request: memory calls asked for a different `num_ctx` (13.1 s of the 15.8) | One context size, `FAST_CTX = 8192`, everywhere — including the reload after deep thinking | 0.1–2.4 s typed |
+| Next question waited 11 s | Memory housekeeping ran straight after each answer and held the model | Waits for 10 s of quiet first | — |
+| Typed "sinduwak play karanna" invented a song | The console skipped the router and went straight to the chat model | Console requests go to the voice loop's brain (`POST /ask`, secret token); answered there if it is down | Plays music; 0.3 s for the time |
+| Voice seconds after the text | 1.4 s waiting for the refused online voice (403 since 15 Oct) + 2.1 s loading the offline voice | Online voice skipped for 15 min after a refusal; offline voice loaded at start; only the unsaid part is re-spoken | — |
+| English answered in Sinhala, Sinhala in English | The model's own choice | Each question says which language to answer in | 5/5 right |
+| "I don't have a tool to suggest meals" | Prompt was all about tools | Advice and general knowledge: answer directly | Real suggestions |
+| A question saved as a fact ("prefers coffee or tea") | The model ignored "questions are not facts" | Questions are never sent to be learned (code, not prompt) | — |
+| "Hey JARVIS" heard once, then nothing | Not yet certain: the beep waited on the sound device with no limit; indexing 268 files starved the microphone | Beep no longer blocks; a stuck command dumps every thread to `voice.log` after 90 s; training folders not indexed, a pause between files | **Needs your voice to confirm** |
+| Console `/api/speak` crashed | A variable named `speak` hid the function | Renamed; a test now finds any such clash in every file | — |
+
+Still weak: romanised Sinhala the router does not know ("mokakda hodama paan kade?") —
+a 9B model's limit. Router commands in Singlish are fine.
+
+---
+
 ## Part V — What this will and will not be
 
 I would rather you know now than on Day 25.

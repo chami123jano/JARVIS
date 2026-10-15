@@ -30,6 +30,10 @@ import requests
 from sinhala import singlish_to_script
 
 ENDPOINT = 'http://127.0.0.1:11434'
+# Every call to the fast model must ask for the same context size. Ollama reloads a model
+# whenever it changes, and these calls asking for the default while the chat asked for
+# 8192 cost a 13-second reload on almost every request (measured 16 Oct 2026).
+FAST_CTX = 8192
 EMBED_MODEL = 'nomic-embed-text'
 QUERY_PREFIX, DOC_PREFIX = 'search_query: ', 'search_document: '
 SEARCHABLE = ('note', 'memory', 'summary')
@@ -48,6 +52,10 @@ SUMMARY_CHUNK = 30
 # Someone talking about themselves. Only these utterances are checked for facts.
 FIRST_PERSON = re.compile(r'\b(i|i\'m|my|me|mine|mama|mata|mage|mange)\b|මම|මට|මගේ|මාව|මගෙ',
                           re.I)
+# A question is never a fact. Measured 16 Oct: "mata hondai coffee da tea da?" (which is
+# better for me, coffee or tea?) was saved as "The user prefers coffee or tea" -- the
+# model was told questions do not count and saved it anyway.
+QUESTION = re.compile(r'(\?|\b(da|neda)|ද)\s*[.!]*\s*$', re.I)
 
 
 class Memory:
@@ -73,7 +81,7 @@ class Memory:
             'messages': [{'role': 'user', 'content':
                           'Rewrite this in plain English in one short line, keeping names, '
                           f'numbers and dates. Reply with the line only.\n\n{text}'}],
-            'options': {'temperature': 0, 'num_predict': 120}}, timeout=(5, 120))
+            'options': {'temperature': 0, 'num_ctx': FAST_CTX, 'num_predict': 120}}, timeout=(5, 120))
         response.raise_for_status()
         return (response.json().get('message') or {}).get('content', '').strip() or text
 
@@ -184,7 +192,7 @@ class Memory:
                           'asked, what was decided or done, and anything the user said about '
                           'themselves, their work or their plans. Keep names, numbers and '
                           f'dates.\n\n{transcript}'}],
-            'options': {'temperature': 0, 'num_predict': 300}}, timeout=(5, 180))
+            'options': {'temperature': 0, 'num_ctx': FAST_CTX, 'num_predict': 300}}, timeout=(5, 180))
         response.raise_for_status()
         return (response.json().get('message') or {}).get('content', '').strip()
 
@@ -196,7 +204,7 @@ class Memory:
         Only utterances in the first person are looked at, and only lasting things count:
         "I don't drink coffee" is a fact; "remind me to buy coffee" is a request.
         """
-        if not FIRST_PERSON.search(str(utterance)):
+        if not FIRST_PERSON.search(str(utterance)) or QUESTION.search(str(utterance)):
             return []
         schema = {'type': 'object', 'required': ['facts'], 'properties': {
             'facts': {'type': 'array', 'maxItems': 3, 'items': {
@@ -218,7 +226,7 @@ class Memory:
                     'model': self.fast_model(), 'stream': False, 'think': False,
                     'format': schema, 'keep_alive': '30m',
                     'messages': [{'role': 'user', 'content': prompt}],
-                    'options': {'temperature': 0, 'num_predict': 200}}, timeout=(5, 60))
+                    'options': {'temperature': 0, 'num_ctx': FAST_CTX, 'num_predict': 200}}, timeout=(5, 60))
                 response.raise_for_status()
                 answer = json.loads(response.json()['message']['content'])
         except Exception as error:

@@ -1475,6 +1475,35 @@ Found by running it:
 
 ## PHASE G — Ambient and polish (Days 24–28)
 
+#### ✅ Day 24 complete — the console shows what the voice loop is doing, live
+
+The voice loop and the console are separate processes, so the console used to know
+nothing about the microphone. Now (`live.py`) the voice loop keeps a picture of itself in
+memory -- state, microphone level twenty times a second, the last three exchanges -- served
+as JSON on 127.0.0.1 only, and the console's server passes it on. Nothing touches the disk.
+
+  - **A state ring** around the core: cyan listening (pulsing), amber thinking, green
+    speaking, dim idle, red when the voice loop is off. The headline state follows it.
+  - **The inner ring is the real microphone**: sixty-four segments, the last three
+    seconds of level.
+  - **Subtitles**: the Sinhala it heard and what it said, labelled and timed -- a
+    mishearing is on screen, not guessed at. Unprompted remarks are marked as such.
+  - **A live journal**: the newest request's steps as they happen.
+  - Phone width checked: nothing wider than the screen at 390 px.
+
+Looked at in Chrome against a stand-in feed, at desktop and phone width, rather than
+assumed. Found that way:
+  - **The live journal could make the page wider than a phone**: a grid column of
+    one-line text grows to its longest line unless told it may shrink (minmax(0, 1fr)).
+  - **Windows let two servers share a port.** Python's HTTP server asks for address
+    reuse, which on Windows lets a second process bind the same port and answer some of
+    the requests. The console and the live feed now each own their port.
+  - The page skips polling while its tab is hidden; a tab driven by automation reports
+    itself hidden, which looked at first like the feature not working.
+  - Headless Chrome cannot make a window narrower than about 500 px; its 390 px renders
+    were 500 px layouts, cropped. Measured instead with the phone rules applied in a
+    real tab.
+
 ### Day 24 — The face
 
 **Goal:** it looks like JARVIS when you do open the screen.

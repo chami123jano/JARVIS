@@ -9,3 +9,20 @@
 @media(max-width:520px){.console-grid{display:flex;flex-direction:column}.conversation{order:-1;flex:none;height:490px;border-top:0;padding-top:16px;border-bottom:1px solid var(--line)}.intelligence{padding-top:23px}.core-footer{font-size:8px}.quick-grid button{font-size:10px}.nav{font-size:9px}#toast{bottom:78px}#notifications{bottom:78px}.record-grid{min-height:0}}
 .streaming{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-size:12px;color:#9fb3b4;margin:0 0 14px;border-left:2px solid #2d4442;padding-left:13px;max-height:210px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#354146 transparent}.streaming:after{content:"";display:inline-block;width:6px;height:12px;background:var(--cyan);margin-left:3px;vertical-align:-2px;animation:blink 1s infinite}
 .skill-code{white-space:pre;overflow:auto;max-height:520px;background:#101416;border:1px solid var(--line);border-radius:6px;padding:16px;font-size:12px;line-height:1.6;color:#cfe0e0}
+.voice-live{border-top:1px solid var(--line);padding:13px 0 18px}
+#voiceState[data-state=listening]{color:var(--cyan);border-color:#2f6b69}#voiceState[data-state=thinking]{color:var(--amber);border-color:#6b5631}#voiceState[data-state=speaking]{color:#7ee08a;border-color:#2f6b3a}#voiceState[data-state=off]{color:var(--red);border-color:#5a2c34}
+.subtitles{display:grid;gap:10px;margin-top:10px;min-height:96px}
+.subtitles .line{margin:0;font-size:15px;line-height:1.6;overflow-wrap:anywhere}
+.subtitles .line span{display:block;font-family:Consolas,monospace;font-size:8px;color:#7d8f93;margin-bottom:2px}
+.subtitles .line.you{color:#e9dcc2}.subtitles .line.you span{color:var(--amber)}
+.subtitles .line.jarvis{color:#d8f6f2}.subtitles .line.jarvis span{color:var(--cyan)}
+.subtitles .line time{color:#56636a;margin-left:8px}
+.empty-line{color:var(--muted);font-size:12px;margin:0}
+.journal-live{border-top:1px solid var(--line);margin-top:12px;padding-top:6px}
+#liveJournal{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:5px;max-height:150px;overflow:auto}
+#liveJournal li{display:grid;grid-template-columns:58px minmax(0,120px) minmax(0,1fr);gap:8px;font-size:10px;color:var(--muted);align-items:baseline}
+#liveJournal li b{font-weight:500;color:#c8d6d7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#liveJournal li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#liveJournal li.error b{color:var(--red)}#liveJournal li.running b{color:var(--amber)}
+#liveJournal time{font-family:Consolas,monospace;color:#56636a}
+@media(max-width:520px){#liveJournal li{grid-template-columns:52px minmax(0,1fr)}#liveJournal li span{display:none}.subtitles .line{font-size:14px}}

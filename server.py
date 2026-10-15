@@ -11,6 +11,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
+from urllib.request import urlopen
 import webbrowser
 
 import requests
@@ -180,6 +181,14 @@ def create_server(port=4190, data_dir=None):
                                       'jobs': [agent.snapshot(key) for key in list(agent.jobs)]})
                 if path.startswith('/api/jobs/'):
                     return self.send(agent.snapshot(path.rsplit('/', 1)[-1]))
+                if path == '/api/live':
+                    # The voice loop's live picture (Day 24), passed on from 127.0.0.1:4191.
+                    import live
+                    try:
+                        with urlopen(f'http://127.0.0.1:{live.PORT}/live', timeout=0.4) as answer:
+                            return self.send(json.loads(answer.read()))
+                    except (OSError, ValueError):
+                        return self.send({'running': False, 'state': 'off', 'levels': [], 'lines': []})
                 if path == '/api/skills':
                     # Pending skills are shown in full: approving means reading the code.
                     import skills
@@ -315,7 +324,10 @@ def create_server(port=4190, data_dir=None):
             except (ValueError, TypeError, KeyError, OSError) as error:
                 self.send({'error': str(error)}, 400)
 
-    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    # One console per port: with Python's default address reuse, Windows let a second
+    # server bind 4190 too and answer some of the requests (Day 24).
+    from live import ExclusiveServer
+    server = ExclusiveServer(('127.0.0.1', port), Handler)
     server.daemon_threads = True
     return server
 

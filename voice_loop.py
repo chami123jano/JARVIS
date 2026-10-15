@@ -475,6 +475,8 @@ class Listener:
 
     def set_state(self, state):
         self.state = state
+        import live
+        live.LIVE.set_state(state)          # for the console's state ring (Day 24)
         if self.on_state:
             try:
                 self.on_state(state)
@@ -512,8 +514,12 @@ class Listener:
         def callback(indata, _frames, _time, status):
             if status:
                 print(f'audio: {status}', file=sys.stderr)
-            blocks.put(indata[:, 0].copy())
+            block = indata[:, 0].copy()
+            blocks.put(block)
+            # The console's waveform (Day 24): a level, never the audio itself.
+            live.LIVE.level(float(numpy.sqrt(numpy.mean(block * block))))
 
+        import live
         return sounddevice.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='float32',
                                        blocksize=512, device=self.device,
                                        callback=callback), blocks
@@ -1009,6 +1015,8 @@ def build_brain(args):
 
     def say_unprompted(text):
         hooks['spoken'](text)
+        import live
+        live.LIVE.said(text, unprompted=True)
         if not args.silent:
             speech.SPEAKER.say(text)
 
@@ -1187,6 +1195,9 @@ def build_brain(args):
 
     def start_watching():
         """Start speaking first: reminders and routines, and arriving messages."""
+        # The console's live picture (Day 24): state, microphone level, subtitles.
+        import live
+        live.serve(speaking=lambda: speech.SPEAKER.speaking)
         # Index anything saved while JARVIS was off, so it can be found by meaning.
         agent.memory.reindex_in_background()
         # Your files under D:\me (Day 13): only what changed is read, every ten minutes.
@@ -1331,6 +1342,18 @@ def build_brain(args):
                 else 'WhatsApp එකේ ටයිප් කරලා තියෙනවා. Enter ගහලා යවන්න.')
 
     def respond(text, speak=True, on_state=None):
+        """Route, act, and say the answer. Returns the reply text.
+
+        What was heard and what was said also go to the console's subtitles (Day 24), so
+        a mishearing is always visible.
+        """
+        import live
+        live.LIVE.heard(text)
+        reply = answer(text, speak, on_state)
+        live.LIVE.said(reply)
+        return reply
+
+    def answer(text, speak=True, on_state=None):
         """Route, act, and say the answer. Returns the reply text."""
         # An outstanding question takes precedence: the next utterance answers it.
         if pending:

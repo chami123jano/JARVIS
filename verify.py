@@ -646,6 +646,35 @@ def remembers():
                   f'{len(mem.unsummarised())} messages not yet summarised')
 
 
+@check('day 24', 'The face: live state, waveform and subtitles in the console')
+def the_face():
+    import json as _json
+    import socket
+    import urllib.request
+    import live
+    page = (ROOT / 'web' / 'index.html').read_text(encoding='utf-8')
+    script = (ROOT / 'web' / 'app.js').read_text(encoding='utf-8')
+    missing = [part for part in ('id="subtitles"', 'id="voiceState"', 'id="liveJournal"')
+               if part not in page] + [part for part in ('pollLive', 'renderJournal') if part not in script]
+    if missing:
+        return FAIL, 'console is missing ' + ', '.join(missing)
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        port = probe.getsockname()[1]
+    picture = live.Live()
+    picture.heard('පරීක්ෂණය')
+    server = live.serve(picture, port=port)
+    try:
+        with urllib.request.urlopen(f'http://127.0.0.1:{port}/live', timeout=2) as reply:
+            data = _json.loads(reply.read())
+    finally:
+        server.shutdown()
+        server.server_close()
+    if data['lines'][0]['text'] != 'පරීක්ෂණය':
+        return FAIL, 'the live picture did not come back'
+    return PASS, 'state ring, microphone waveform, subtitles and live journal wired'
+
+
 @check('day 29', 'Offline Sinhala voice: speaks with the network cut')
 def offline_sinhala():
     import offline_voice
@@ -799,7 +828,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, offline_sinhala, hardened, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, the_face, offline_sinhala, hardened, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

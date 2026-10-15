@@ -1,6 +1,9 @@
 const $ = selector => document.querySelector(selector);
 const icons = () => window.lucide?.createIcons();
 let state = null, activeJob = null, filter = 'all', deleteId = null, mode = 'standby', busyPoll = false;
+// The voice loop's live picture (Day 24): its state, microphone levels and subtitles.
+let live = {running: false, state: 'off', levels: [], lines: []}, livePolling = false;
+const LIVE_MODES = {listening: 'listening', thinking: 'thinking', speaking: 'speaking', idle: 'standby'};
 let voiceEnabled = localStorage.getItem('jarvis-voice') === 'true';
 let recognition = null, listening = false, lastEvents = [], toastTimer;
 const notified = new Set();
@@ -129,6 +132,32 @@ function streamText(text) {
   node.hidden = false; node.textContent = text;
   if (atBottom) node.scrollTop = node.scrollHeight;
 }
+async function pollLive() {
+  if (livePolling || document.hidden) return; livePolling = true;
+  try {
+    live = await api('live');
+    $('#voiceState').textContent = live.running ? live.state.toUpperCase() : 'VOICE LOOP OFF';
+    $('#voiceState').dataset.state = live.running ? live.state : 'off';
+    if (live.running && !activeJob) setMode(LIVE_MODES[live.state] || 'standby');
+    renderSubtitles();
+  } catch (error) { live = {running: false, state: 'off', levels: [], lines: []}; }
+  finally { livePolling = false; }
+}
+// What it heard and what it said, both on screen, so a mishearing is always visible.
+let lastLines = '';
+function renderSubtitles() {
+  const lines = (live.lines || []).slice(-4), key = JSON.stringify(lines);
+  if (key === lastLines) return; lastLines = key;
+  if (!lines.length) return;
+  $('#subtitles').innerHTML = lines.map(l => `<p class="line ${l.who}"><span>${l.who === 'you' ? 'HEARD' : l.unprompted ? 'JARVIS, UNPROMPTED' : 'JARVIS'} <time>${esc(l.at)}</time></span>${esc(l.text)}</p>`).join('');
+}
+// The newest request's steps, as they happen.
+function renderJournal(job) {
+  job = job || (state?.jobs || []).at(-1);
+  if (!job) return;
+  $('#journalTag').textContent = job.state.toUpperCase();
+  $('#liveJournal').innerHTML = job.events.slice(-6).map(e => `<li class="${e.state}"><time>${esc(e.time)}</time><b>${esc(e.label)}</b><span>${esc(String(e.detail).slice(0, 140))}</span></li>`).join('');
+}
 async function pollJob() {
   if (!activeJob) return;
   try {
@@ -136,7 +165,7 @@ async function pollJob() {
     $('#workingLabel').textContent = job.events.at(-1)?.label || 'Thinking';
     $('#stepCount').textContent = String(job.events.filter(e => e.label === 'Tool completed').length).padStart(2, '0') + ' OPERATIONS';
     if (state) { state.jobs = state.jobs.filter(j => j.id !== job.id); state.jobs.push(job); }
-    renderActivity();
+    renderActivity(); renderJournal(job);
     streamText(job.partial);
     if (['done','error','cancelled'].includes(job.state)) {
       activeJob = null; $('#working').hidden = true; $('#stopButton').hidden = true; $('#sendButton').disabled = false;
@@ -251,6 +280,7 @@ async function refresh(first = false) {
       if (running) { activeJob = running.id; $('#working').hidden = false; $('#stopButton').hidden = false; $('#sendButton').disabled = true; setMode('thinking'); pollJob(); }
       populateSettings(); renderActivity();
     }
+    if (!activeJob) renderJournal();
   } catch(error) { $('#connectionText').textContent = 'Console server unavailable'; $('#footerStatus').textContent = 'DISCONNECTED'; if (first) toast('Cannot reach the local server.'); }
   finally { busyPoll = false; }
 }
@@ -276,12 +306,18 @@ function draw() {
   for (let i=0;i<120;i++) { const a=i*Math.PI/60;const inner=r*(i%5===0?1.08:1.12);context.beginPath();context.moveTo(Math.cos(a)*inner,Math.sin(a)*inner);context.lineTo(Math.cos(a)*r*1.15,Math.sin(a)*r*1.15);context.strokeStyle=i%5===0?'#618d8c':'#293b3c';context.lineWidth=1;context.stroke(); }
   ring(r*1.03,0,Math.PI*2,'#253c3d'); ring(r*.96,0,Math.PI*2,'#1b3031'); ring(r*.67,0,Math.PI*2,'#345856');
   for(let i=0;i<3;i++) { const a=frame+i*Math.PI*2/3;ring(r*.9,a,a+1.45,'#78d7d0',2);ring(r*.79,-a,-a+.62,'#bfab83',1.5); }
-  for(let i=0;i<64;i++) { const a=i*Math.PI/32;const wave=['speaking','listening'].includes(mode)?Math.sin(frame*18+i*.5)*.045:Math.sin(frame*3+i*.3)*.008;ring(r*(.56+wave),a,a+.045,'#517f7c',2); }
+  // The inner ring is the real microphone: one segment per level, newest at the top.
+  const levels = live.running && live.levels.length ? live.levels : null;
+  for(let i=0;i<64;i++) { const a=i*Math.PI/32-Math.PI/2;const level=levels?levels[(levels.length-64+i+64*levels.length)%levels.length]:0;const wave=levels?level*.16:['speaking','listening'].includes(mode)?Math.sin(frame*18+i*.5)*.045:Math.sin(frame*3+i*.3)*.008;ring(r*(.56+wave),a,a+.045,level>.08?'#9ef0e8':'#517f7c',2); }
+  // The state ring: what the voice loop is doing, in colour.
+  const stateColour = {listening:'#72e4e2', thinking:'#dfb67d', speaking:'#7ee08a', idle:'#2d4446', off:'#4a2c32'}[live.running ? live.state : 'off'] || '#2d4446';
+  const pulse = live.state === 'listening' ? (Math.sin(Date.now()/180)+1)/2 : 1;
+  context.globalAlpha = .45 + .55*pulse; ring(r*1.2,0,Math.PI*2,stateColour,live.state === 'idle' ? 1.5 : 3); context.globalAlpha = 1;
   ring(r*.49,0,Math.PI*2,'#193032');
   const a=-frame*1.3;context.fillStyle='#e4c492';context.beginPath();context.arc(Math.cos(a)*r*.79,Math.sin(a)*r*.79,2.2,0,Math.PI*2);context.fill();
   context.restore(); requestAnimationFrame(draw);
 }
 draw(); updateVoice(); voiceOptions(); icons(); view(['console','memory','activity','settings'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'console');
-refresh(true); setInterval(refresh,5000); setInterval(reminders,1000); refreshTasks(); setInterval(refreshTasks,3000); refreshSkills(); setInterval(refreshSkills,10000);
+refresh(true); setInterval(refresh,5000); pollLive(); setInterval(pollLive,150); setInterval(reminders,1000); refreshTasks(); setInterval(refreshTasks,3000); refreshSkills(); setInterval(refreshSkills,10000);
 function updateClock() { $('#clock').textContent = new Date().toLocaleTimeString('en-GB'); }
 updateClock(); setInterval(updateClock,1000);

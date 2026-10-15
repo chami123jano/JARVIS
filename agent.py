@@ -33,6 +33,11 @@ THINK_MIN_LENGTH = 180
 # reasoned for 12,000 tokens over seven minutes and never reached an answer; at "medium",
 # 9,500 tokens and a correct one in five.
 DEEP_EFFORT = 'medium'
+# A request about the user's own files (Day 13). Project folder names count too.
+FILE_WORDS = re.compile(
+    r'\b(cv|resume|file|files|document|documents|pdf|readme|code|project|projects|receipt|'
+    r'receipts|invoice|notes|pharmacy|jarvis|portfolio|campus|cjas|lanka)\b'
+    r'|ෆයිල්|ලේඛන|ලියවිලි|කෝඩ්|ප්‍රොජෙක්ට්|සීවී', re.I)
 DEEP_SECONDS = 900
 
 # Past-tense claims that only hold if the matching tool actually ran. Measured on
@@ -161,10 +166,42 @@ class Agent:
             self.event(job_id, 'Tool failed', str(error), 'error')
             return {'error': str(error)}
 
-    def system_prompt(self, prompt=''):
+    def file_excerpts(self, prompt):
+        """Excerpts from the user's own files, when the request is about them (Day 13).
+
+        Chosen by what was asked, not by score: measured, small talk matched stray HTML
+        and test files at up to 0.69 and real file questions scored 0.71 to 0.79 -- too
+        close to separate. "CV", "file", "project" and the like are not.
+        """
+        if not FILE_WORDS.search(str(prompt)):
+            return []
+        try:
+            import documents
+            return documents.Library(self.store, self.memory).search(prompt, top=4)
+        except Exception:
+            return []
+
+    @staticmethod
+    def with_source(answer, sources):
+        """Make sure an answer drawn from files names one. Added by code if the model did
+        not, because an answer you cannot check is worse than none."""
+        if not sources:
+            return answer
+        names = {where.split(',')[0].lower() for where in sources}
+        if any(name in answer.lower() for name in names):
+            return answer
+        return f'{answer.rstrip()} ({sources[0]})'
+
+    def system_prompt(self, prompt='', excerpts=()):
         # The records closest in meaning to this request, not the newest 25 (Day 14): a
         # fixed dump stops working once there are hundreds, and misses anything older.
         memories = memory.context_for(self.store, prompt, self.memory)
+        files = ''
+        if excerpts:
+            files = (' Excerpts from the user\'s own files, for this request. When you use one, '
+                     'say which file it came from; never name a file that is not listed here: '
+                     + json.dumps([{'where': e['where'], 'text': e['text'][:1200]}
+                                   for e in excerpts], ensure_ascii=False))
         return ('You are JARVIS, Chamindu\'s personal desktop assistant. You are calm, brief and '
                 'quietly witty. Two sentences is usually plenty; never pad an answer. '
                 'Reply in the language the user wrote in — if they write Sinhala, answer in Sinhala. '
@@ -185,7 +222,7 @@ class Agent:
                 f'Local time: {dt.datetime.now().astimezone().isoformat()}. '
                 'What you know about the user -- the saved notes, memories and past '
                 'conversation summaries most relevant to this request, each with the date it '
-                f'was saved: {json.dumps(memories, ensure_ascii=False)}')
+                f'was saved: {json.dumps(memories, ensure_ascii=False)}.' + files)
 
     def run(self, job_id, prompt):
         job = self.jobs[job_id]
@@ -222,7 +259,14 @@ class Agent:
                                f'{model} does not fit beside the fast brain in 15.6 GB, so the '
                                'fast one is unloaded first. Loading takes about 40 seconds; '
                                'the thinking itself, a few minutes.')
-                messages = [{'role': 'system', 'content': self.system_prompt(prompt)}, *history,
+                excerpts = self.file_excerpts(prompt)
+                if excerpts:
+                    with self.lock:
+                        job['sources'] = [e['where'] for e in excerpts]
+                    self.event(job_id, 'Read your files', '\n'.join(
+                        f"{e['path']} ({e['where'].split(', ', 1)[1]}), score {e['score']}"
+                        for e in excerpts))
+                messages = [{'role': 'system', 'content': self.system_prompt(prompt, excerpts)}, *history,
                             {'role': 'user', 'content': asked}]
                 answer = ''
                 calls = 0
@@ -276,6 +320,7 @@ class Agent:
                 if language_of(prompt) == 'si' and language_of(answer) != 'si':
                     answer = self.translate(answer, 'everyday spoken Sinhala')
                     self.event(job_id, 'Translated back', answer)
+            answer = self.with_source(answer, job.get('sources') or [])
             self.store.message('assistant', answer)
             threading.Thread(target=self.after_answer, args=(job_id, prompt), daemon=True,
                              name='memory').start()

@@ -233,6 +233,11 @@ class Tools:
             return {'text': text, 'to': 'si' if target.startswith('si') else 'en',
                     'note': 'Translate this yourself and reply with the translation only. '
                             'Leave names of people and places unchanged.'}
+        if name == 'search_files':
+            import documents
+            found = documents.Library(self.store).search(str(args.get('question', '')), top=5)
+            return {'excerpts': [{'where': f['where'], 'path': f['path'], 'text': f['text'][:1200]}
+                                 for f in found]}
         if name == 'propose_skill':
             import skills
             need = str(args.get('need', '')).strip()[:300]
@@ -264,6 +269,9 @@ TOOL_DEFINITIONS = {
     'open_app': ('Launch notepad, calculator, paint or explorer.', {'app': 'string'}),
     'translate': ('Translate text between Sinhala and English. Names of people and '
                   'places are left as they are.', {'text': 'string', 'to': 'string'}),
+    'search_files': ("Search the user's own files under D:\\me -- documents, code, PDFs, "
+                     'their CV -- by meaning. Returns excerpts with file and line or page. '
+                     'Name the file when you use one.', {'question': 'string'}),
     'propose_skill': ('When asked for a calculation or conversion that none of your tools '
                       'can do, propose a new tool for it. It is written in the background '
                       'and cannot be used until the user reads and approves it in the '

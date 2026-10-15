@@ -949,6 +949,32 @@ is NOT done.
 
 ---
 
+#### ✅ Day 13 complete — "mage CV eke mona skills tikada thiyenne", from the actual CV
+
+Asked in Singlish and in Sinhala: nineteen skills, every one of them checked against the
+text of the PDF and present, and "(CV.pdf, page 2)" at the end.
+
+`documents.py`. D:\me is 386 readable files once dependency, build and hidden folders
+are left out -- 2,456 chunks, 5.5 minutes to index the first time, then only what changed:
+
+  - **Every chunk knows where it came from**: file and lines, or file and page.
+  - **Incremental**: a file is read again only when its size or modified time changes;
+    deleted files are dropped. Checked at start-up and every ten minutes.
+  - **Never a secret**: skipped by name (.env, credentials, keys, password) or content
+    (GitHub, OpenAI, AWS tokens, private keys). Three files were skipped by name -- a
+    password generator page among them, which is over-cautious and deliberately so.
+  - **Asked by what you ask about, not by score.** Measured: small talk matched stray
+    HTML and test files at up to 0.69, real file questions scored 0.71 to 0.79. Words
+    like CV, file, project, receipt, ෆයිල්, or a project's name bring in excerpts; the
+    model also has a search_files tool for anything else.
+  - **Always cited.** The model is told to name its file; if it does not, the source is
+    added by code.
+  - Questions in Sinhala and Singlish go through Day 14's gloss, so they find English
+    documents -- the embedding model does not cross languages by itself, as the plan
+    assumed; measured on Day 14, it does not.
+
+The answer's Sinhala is still written rather than spoken ("වේ", "ඇත").
+
 ### Day 13 — It knows your own files
 
 **Goal:** ask questions about everything in `D:\me` and get real answers.

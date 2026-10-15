@@ -1116,6 +1116,9 @@ def build_brain(args):
         """Start speaking first: reminders and routines, and arriving messages."""
         # Index anything saved while JARVIS was off, so it can be found by meaning.
         agent.memory.reindex_in_background()
+        # Your files under D:\me (Day 13): only what changed is read, every ten minutes.
+        import documents
+        documents.Library(store, agent.memory).keep_current()
         if not getattr(proactive, 'thread', None):
             proactive.thread = proactive.start()
         if not notifications.allowed_apps(store):

@@ -20,7 +20,7 @@ READ, LOCAL, OUTWARD, FINAL = 0, 1, 2, 3
 TIERS = {
     # Tier 0: reading.
     'system_status': READ, 'list_records': READ, 'calculate': READ,
-    'read_document': READ, 'find_files': READ, 'translate': READ,
+    'read_document': READ, 'find_files': READ, 'translate': READ, 'search_files': READ,
     'time': READ, 'battery': READ, 'list_notes': READ, 'capabilities': READ,
     'weather': READ, 'news': READ, 'dollar_rate': READ,
     # Tier 1: changes confined to this machine.

@@ -604,6 +604,19 @@ def deep_think():
     return PASS, 'hard questions right: ' + ', '.join(f'{b} {s}' for b, s in scores.items())
 
 
+@check('day 13', 'Knows your files: indexed, cited, no secrets')
+def knows_files():
+    import documents
+    from assistant_core import ROOT as CORE_ROOT, Store
+    status = documents.Library(Store(CORE_ROOT / 'data' / 'jarvis.db')).status()
+    if not status['files']:
+        return WARN, 'nothing indexed yet: python documents.py --index'
+    if not documents.is_secret_file('x.txt', 'token ghp_' + 'a' * 36):
+        return FAIL, 'a GitHub token would be indexed'
+    return PASS, (f"{status['files']} files, {status['chunks']} chunks searchable; "
+                  f"{len(status['skipped'])} skipped as possible secrets")
+
+
 @check('day 14', 'Memory: search by meaning, summaries, facts it says aloud')
 def remembers():
     import memory
@@ -700,7 +713,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, remembers, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

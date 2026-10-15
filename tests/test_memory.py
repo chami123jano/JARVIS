@@ -226,10 +226,7 @@ class SinglishTests(unittest.TestCase):
                 return {'role': 'assistant', 'content': 'ok'}
             with patch.object(agent, 'generate', side_effect=generate):
                 job_id = agent.start('mama coffee bonne ne')
-                for _ in range(200):
-                    if agent.snapshot(job_id)['state'] not in ('running', 'stopping'):
-                        break
-                    time.sleep(.02)
+                agent.wait(job_id)
         self.assertIn('මම coffee බොන්නේ නෑ', seen['text'])
 
 

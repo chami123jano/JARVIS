@@ -1090,6 +1090,38 @@ tried so far without it.
 
 ---
 
+#### ✅ Day 16 complete — you come back, and it says "ආයුබෝවන් චමින්දු" unprompted
+
+Live, with the real signals and the real voice brain: Windows reported a minute without
+input, JARVIS marked him away; a one-pixel mouse nudge stood in for sitting down; it
+counted the absence and said "ආයුබෝවන් චමින්දු" aloud.
+
+`presence.py` -- **presence from Windows, not a camera.** The plan's camera was to be off by
+default, so the default had to work without one:
+
+  - **here**: input in the last five minutes, screen unlocked. **away**: locked, or no
+    keyboard or mouse for five minutes. Read from GetLastInputInfo and the lock screen.
+  - **Back after half an hour or more: a greeting**, with any messages that arrived.
+  - **The first arrival of the morning brings the briefing** -- a laptop that was shut at
+    07:30 used to miss it. The clock and the arrival claim it under one lock, so it never
+    comes twice.
+  - **Quiet while away**: reminders, routines and remarks wait and are said on return;
+    arriving messages are kept for the greeting rather than read to an empty room.
+  - **Music pauses when you leave and resumes when you return** -- wired, not yet tried
+    live (it would have meant playing music aloud again).
+
+Not done: the **webcam** (OpenCV is a download, and a camera wants your say-so). It can sit
+on top of this as an optional, off-by-default signal.
+
+Found by doing it:
+  - **The absence was counted from when it was noticed, not from the last input**:
+    idle for 170 s, back, and it counted 8 s -- so no greeting.
+  - **With the Sinhala voice down, a Sinhala-only reply said "this is on screen only."**
+    Replies of up to eight words are now read in Latin letters by the Windows voice --
+    "ayubowan chamindu" is understood.
+  - **Two tests deleted their folder while the agent was still writing to it**, failing
+    one run in a few. The agent can now be waited for.
+
 ### Day 16 — Presence
 
 **Goal:** it knows when you are there.

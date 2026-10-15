@@ -646,6 +646,16 @@ def remembers():
                   f'{len(mem.unsummarised())} messages not yet summarised')
 
 
+@check('day 16', 'Presence: knows when you are there, no camera')
+def knows_presence():
+    import presence
+    state, why = presence.sense()
+    if state not in ('here', 'away'):
+        return FAIL, f'unexpected state {state}'
+    return PASS, f'{state} ({why}); away after {presence.AWAY_AFTER // 60} min, greets after ' \
+                 f'{presence.GREET_AFTER // 60} min away; camera not used'
+
+
 @check('day 17', "Knows who is speaking: only the owner's voice sends")
 def knows_voice():
     import speaker
@@ -774,7 +784,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_voice, hardened, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, hardened, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

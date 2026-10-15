@@ -236,6 +236,7 @@ class Routines:
         self.cpu_warned_at = None
         self.held = []          # what the gate refused, for --status and the log
         self.stopped = threading.Event()
+        self.briefing_lock = threading.Lock()
 
     def lang(self):
         return self.store.config('reply_language', 'si')
@@ -295,10 +296,27 @@ class Routines:
             return []
         at = dt.datetime.combine(moment.date(), parse_hhmm(config['briefing_time']),
                                  moment.tzinfo)
-        if not at <= moment < at + BRIEFING_GRACE:
+        if not at <= moment < at + BRIEFING_GRACE or not self.claim_briefing(moment):
             return []
-        text = briefing(self.store, self.lang(), moment, self.waiting_messages())
-        return [('briefing', text, lambda: self.store.set_config('briefing_last', today))]
+        return [('briefing', briefing(self.store, self.lang(), moment,
+                                      self.waiting_messages()), None)]
+
+    def claim_briefing(self, moment=None):
+        """Today's briefing, once. Both the clock and an arrival (Day 16) may give it; the
+        first to claim it does, under a lock, so it is never given twice."""
+        today = (moment or now_local()).date().isoformat()
+        with self.briefing_lock:
+            if self.store.config('briefing_last', '') == today:
+                return False
+            self.store.set_config('briefing_last', today)
+            return True
+
+    def briefing_on_arrival(self, moment=None):
+        """The briefing text if this arrival should get it, else None."""
+        moment = moment or now_local()
+        if not settings(self.store)['briefing_enabled'] or not self.claim_briefing(moment):
+            return None
+        return briefing(self.store, self.lang(), moment, self.waiting_messages())
 
     def check_machine(self, moment):
         """Battery, disk and processor. Each counts as warned only once it is said.

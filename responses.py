@@ -822,3 +822,14 @@ def say_not_owner(lang='si'):
     if lang == 'en':
         return "Sorry, I can only send messages for Chamindu, and that didn't sound like him."
     return 'සමාවෙන්න, මැසේජ් යවන්න පුළුවන් චමින්දුට විතරයි.'
+
+
+# ---------------------------------------------------------------- presence (Day 16)
+
+def say_welcome_back(name='චමින්දු', waiting=0, lang='si'):
+    """Said on a return after a real absence. The greeting alone is a fixed phrase, so it
+    is cached and still spoken in Sinhala when the voice service is down."""
+    if lang == 'en':
+        line = f'Welcome back, {name if name.isascii() else "Chamindu"}.'
+        return line + (f' {say_messages_waiting(waiting, "en")}' if waiting else '')
+    return f'ආයුබෝවන් {name}' + (f'. {say_messages_waiting(waiting, "si")}' if waiting else '')

@@ -84,6 +84,8 @@ class Agent:
     def __init__(self, store, tools, endpoint='http://127.0.0.1:11434'):
         self.store, self.tools, self.endpoint = store, tools, endpoint
         self.jobs = {}
+        # The threads each job started, so a caller can wait for all of its writes.
+        self.threads = {}
         self.lock = threading.RLock()
         # Set False automatically when a model turns out not to support tools.
         self.native_tools = True
@@ -104,8 +106,19 @@ class Agent:
                                  'partial': '', 'model': '', 'cancel': threading.Event()}
             for old in list(self.jobs)[:-25]:
                 del self.jobs[old]
-        threading.Thread(target=self.run, args=(job_id, prompt), daemon=True).start()
+                self.threads.pop(old, None)
+        worker = threading.Thread(target=self.run, args=(job_id, prompt), daemon=True)
+        self.threads[job_id] = [worker]
+        worker.start()
         return job_id
+
+    def wait(self, job_id, timeout=10):
+        """Until the job and the housekeeping after it have finished writing."""
+        deadline = time.monotonic() + timeout
+        for thread in list(self.threads.get(job_id, [])):
+            thread.join(max(0.0, deadline - time.monotonic()))
+        for thread in list(self.threads.get(job_id, [])):   # started while waiting
+            thread.join(max(0.0, deadline - time.monotonic()))
 
     def snapshot(self, job_id):
         with self.lock:
@@ -391,8 +404,10 @@ class Agent:
             answer = self.with_source(answer, job.get('sources') or [],
                                       job.get('excerpt_texts') or [])
             self.store.message('assistant', answer)
-            threading.Thread(target=self.after_answer, args=(job_id, prompt), daemon=True,
-                             name='memory').start()
+            housekeeping = threading.Thread(target=self.after_answer, args=(job_id, prompt),
+                                            daemon=True, name='memory')
+            self.threads.setdefault(job_id, []).append(housekeeping)
+            housekeeping.start()
             with self.lock:
                 job['answer'], job['state'], job['partial'] = answer, 'done', ''
             self.event(job_id, 'Finished', 'Results saved to conversation')

@@ -1012,8 +1012,49 @@ def build_brain(args):
         if not args.silent:
             speech.SPEAKER.say(text)
 
-    proactive = daily.Routines(store, say_unprompted, busy=lambda: hooks['busy'](),
+    # Away (Day 16) counts as busy: reminders and remarks wait until you are back, rather
+    # than being said to an empty room.
+    proactive = daily.Routines(store, say_unprompted,
+                               busy=lambda: hooks['busy']() or watcher.away,
                                waiting_messages=lambda: len(inbox))
+
+    # Presence (Day 16), from Windows' own idle time and lock state -- no camera.
+    import presence as here
+    away_music = {'paused': False}
+    PLAYERS = ('chrome.exe', 'msedge.exe', 'firefox.exe', 'brave.exe', 'opera.exe',
+               'wmplayer.exe', 'microsoft.media.player.exe', 'spotify.exe', 'vlc.exe')
+
+    def on_leave():
+        print('  presence: away', flush=True)
+        try:
+            import media
+            if any(name.lower() in PLAYERS for name, _ in media.playing()):
+                media.control('pause')
+                away_music['paused'] = True
+                print('  presence: paused the music', flush=True)
+        except Exception as error:
+            print(f'  presence: could not pause: {error}', file=sys.stderr)
+
+    def on_arrive(absence, first):
+        print(f'  presence: back after {absence / 60:.0f} min'
+              + (' (first time today)' if first else ''), flush=True)
+        if away_music['paused']:
+            away_music['paused'] = False
+            try:
+                import media
+                media.control('resume')
+            except Exception as error:
+                print(f'  presence: could not resume: {error}', file=sys.stderr)
+        lang = store.config('reply_language', 'si')
+        text = proactive.briefing_on_arrival() if first else None
+        quiet = daily.in_quiet_hours(daily.now_local(), daily.settings(store)['quiet_hours'])
+        if text is None and absence >= here.GREET_AFTER and not quiet:
+            text = responses.say_welcome_back(store.config('owner_name', 'චමින්දු'),
+                                              len(inbox), lang)
+        if text:
+            say_unprompted(text)
+
+    watcher = here.Presence(on_arrive, on_leave)
     # Day 14: whatever it learns about you, it says. Never a secret memory.
     agent.on_learned = lambda facts: say_unprompted(responses.say_learned(facts))
 
@@ -1151,6 +1192,8 @@ def build_brain(args):
         # Your files under D:\me (Day 13): only what changed is read, every ten minutes.
         import documents
         documents.Library(store, agent.memory).keep_current()
+        if not getattr(watcher, 'thread', None):
+            watcher.thread = watcher.start()
         if not getattr(proactive, 'thread', None):
             proactive.thread = proactive.start()
         if not notifications.allowed_apps(store):
@@ -1166,7 +1209,8 @@ def build_brain(args):
             inbox.append(message)
             print(f'\n  * {message["shown"][:90]}', flush=True)
             print(f'  JARVIS: {message["spoken"][:90]}', flush=True)
-            proactive.remark('message', message['spoken'])
+            if not watcher.away:            # kept for the welcome back otherwise
+                proactive.remark('message', message['spoken'])
 
         thread = threading.Thread(
             target=lambda: watcher.watch(announce, store.config('reply_language', 'si')),
@@ -1482,6 +1526,7 @@ def build_brain(args):
     respond.hooks = hooks
     respond.routines = proactive
     respond.runner = runner
+    respond.presence = watcher
     return respond, speech, start_watching
 
 

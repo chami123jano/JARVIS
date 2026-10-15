@@ -26,6 +26,11 @@ class DeepCase(unittest.TestCase):
         self.agent = Agent(self.store, Tools(self.store, root / 'workspace'))
 
     def tearDown(self):
+        # The memory housekeeping that follows each answer (Day 14) runs in the
+        # background and writes to this folder; removing it underneath made the full suite
+        # fail now and then with "directory is not empty".
+        for job_id in list(self.agent.threads):
+            self.agent.wait(job_id)
         self.temp.cleanup()
 
     def finish(self, job_id):

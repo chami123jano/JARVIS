@@ -31,6 +31,14 @@ CACHE = ROOT / 'data' / 'tts_cache'
 SINHALA_VOICE = 'si-LK-SameeraNeural'
 ENGLISH_VOICE = 'en-GB-RyanNeural'
 SAMPLE_RATE = 24000          # what the endpoint returns
+# Offline, a Sinhala reply this short is read aloud in Latin letters; longer is too garbled.
+SPEAK_ROMANISED_UP_TO = 8
+
+
+def speakable_roman(text):
+    """Sinhala in Latin letters an English voice pronounces: "ch" for ච, "w" for ව."""
+    from sinhala import romanize
+    return romanize(text).replace('c', 'ch').replace('v', 'w')
 
 SINHALA_RANGE = ('඀', '෿')
 MAX_CHARACTERS = 3000        # refuse to narrate an essay
@@ -258,8 +266,16 @@ class Speaker:
         Windows has no Sinhala voice, so Sinhala cannot be spoken offline at all. Saying
         so plainly is better than silence, and the caller still displays the text.
         """
-        english = ' '.join(piece for voice, piece in segments(text) if voice == ENGLISH_VOICE)
+        parts = list(segments(text))
+        english = ' '.join(piece for voice, piece in parts if voice == ENGLISH_VOICE)
         note = 'I cannot reach the speech service, so this is on screen only.'
+        sinhala_words = sum(len(piece.split()) for voice, piece in parts if voice != ENGLISH_VOICE)
+        if sinhala_words and sinhala_words <= SPEAK_ROMANISED_UP_TO:
+            # A short Sinhala reply, read in Latin letters by the English voice: "ayubowan
+            # chamindu" is understood; "on screen only" says nothing. Added on 15 Oct 2026,
+            # when the Sinhala voice service began refusing requests.
+            english = ' '.join(speakable_roman(piece) if voice != ENGLISH_VOICE else piece
+                               for voice, piece in parts)
         try:
             import win32com.client
             sapi = win32com.client.Dispatch('SAPI.SpVoice')

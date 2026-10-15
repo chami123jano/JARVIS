@@ -16,6 +16,7 @@ import argparse
 import datetime as dt
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -184,10 +185,20 @@ class Hearing:
         if engine == 'whisper' or self.google is None:
             self.load_whisper()
 
+    LOADING = threading.Lock()
+
     def load_whisper(self):
-        if self.whisper is None:
-            self.whisper = Ears(self.model_name, self.whisper_device)
+        with self.LOADING:          # a command during the preload waits for it, not a second copy
+            if self.whisper is None:
+                self.whisper = Ears(self.model_name, self.whisper_device)
         return self.whisper
+
+    def preload(self):
+        """Load Whisper in the background now. Measured 16 Oct: Google returned nothing
+        for a clip, Whisper loaded on the spot, and that command took 12.7 s. With it
+        loaded, the fast model, the embedder and Whisper all fit in the 8 GB (7.9 used)."""
+        if self.whisper is None and self.engine != 'google':
+            threading.Thread(target=self.load_whisper, daemon=True, name='whisper-preload').start()
 
     def transcribe(self, audio, language=None):
         if self.google is not None and self.engine != 'whisper':
@@ -457,6 +468,30 @@ def beep(frequency=880, seconds=.15, volume=.5):
 # A command taking longer than this has hung somewhere; the stacks go to the log.
 HANG_SECONDS = 90
 
+# Its own name, as the recognisers actually wrote it in the log.
+GREETINGS = {'hei', 'hi', 'he', 'hai', 'ok', 'okei', 'ayi'}
+CALLED = re.compile(r'^\s*(?:(?:hey|hi|hay|ok|okay|හේ|හායි)[\s,]*)?'
+                    r'(?:jarvis|javis|jervis|jarves|chavez|travis|ජාවිස්|ජාර්විස්)\b[\s,.!?]*',
+                    re.I)
+
+
+def only_the_name(text):
+    """Is this just "Hey JARVIS" -- or what a recogniser made of it ("Hey Chavez!",
+    "Javis.")? Judged by sound, since every mishearing is spelled differently."""
+    from sinhala import normalize, similarity
+    words = normalize(text).split()
+    rest = words[1:] if words and words[0] in GREETINGS else words
+    if len(rest) != 1:
+        return False
+    return (similarity(' '.join(words), 'hei javis') >= .7 or
+            max(similarity(rest[0], name) for name in ('javis', 'jarvis')) >= .6)
+
+
+def without_the_name(text):
+    """"Hey JARVIS, play a song" -> "play a song". Unchanged if nothing is left."""
+    rest = CALLED.sub('', str(text), count=1).strip()
+    return rest or text
+
 
 class Listener:
     """Always-on loop: wake word, then command, then answer, then follow-up.
@@ -604,7 +639,7 @@ class Listener:
             faulthandler.cancel_dump_traceback_later()
             print(f'  (command took {time.monotonic() - started:.1f}s)', flush=True)
 
-    def handle_command(self, blocks, on_command, prompt_beep=True):
+    def handle_command(self, blocks, on_command, prompt_beep=True, renamed=False):
         """One command: record, transcribe, act, speak."""
         if prompt_beep:
             beep()
@@ -636,6 +671,15 @@ class Listener:
             self.flush(blocks)
             self.set_state('idle')
             return False
+        if only_the_name(text):
+            # Called by name in the follow-up window: that is a wake word, not a question.
+            # Measured 16 Oct: "Hey Chavez!" -> "I am JARVIS, not Chavez."
+            print('  (just my name - listening again)', flush=True)
+            if renamed:
+                self.set_state('idle')
+                return False
+            return self.handle_command(blocks, on_command, prompt_beep=True, renamed=True)
+        text = without_the_name(text)
         # Kept for the speaker check (Day 17): who said this, not only what was said.
         self.last_audio = audio
         try:
@@ -1648,6 +1692,7 @@ def wake_loop(args):
     start_watching()
     vad = Vad()
     ears = Hearing(args.stt, args.model, args.whisper_device)
+    ears.preload()
     listener = Listener(vad, ears, args.device, args.wake_threshold,
                         None if args.lang == 'auto' else args.lang)
 

@@ -786,8 +786,15 @@ def say_learned(facts, lang=None):
 # ---------------------------------------------------------------- media (Day 26)
 
 def short_title(title, limit=60):
-    """A video title as it can be said: no hashtags, no '| channel', not too long."""
-    title = re.split(r'\s[|#]|\[', str(title))[0].strip(' -|')
+    """A video title as it can be said: no hashtags, no '| channel', no emoji, not too long.
+
+    Measured 16 Oct: "ලොව ආකර්ෂණීයම සිංදු😱Top 10 Most Attitude Song In The World🥰#ytshorts"
+    was read out whole, the emoji spelled into the speech."""
+    title = re.sub(r'\[[^\]]*\]', ' ', str(title))           # [JUKEBOX], [Official Video]
+    title = re.split(r'#|\s\|\s?|\|', title)[0]
+    # Letters, Sinhala (with its joiner), digits and plain punctuation; emoji become a gap.
+    title = re.sub(r'[^\w\s඀-෿‍.,\'&()+-]', ' ', title)
+    title = re.sub(r'\s+', ' ', title).strip(' -|,.')
     return title[:limit].rsplit(' ', 1)[0] if len(title) > limit else title
 
 

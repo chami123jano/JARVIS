@@ -209,6 +209,104 @@ class AnswerTests(unittest.TestCase):
                 self.assertTrue(recall.extract_facts(text, ask))
 
 
+class CalledByNameTests(unittest.TestCase):
+    """Measured 16 Oct, in the follow-up window: "Hey Chavez!" -> "I am JARVIS, not Chavez"."""
+
+    def test_its_name_however_it_was_heard(self):
+        import voice_loop
+        for text in ('Hey Chavez!', 'Javis.', 'Hey Jarvis', 'හේ ජාවිස්', 'ජාවිස්', 'Hey Jervis'):
+            with self.subTest(text=text):
+                self.assertTrue(voice_loop.only_the_name(text))
+        for text in ('Enjoy!', 'Thank you.', 'hey', 'hello', 'වෙලාව කීයද', 'what is the time',
+                     'Hey JARVIS, play a song'):
+            with self.subTest(text=text):
+                self.assertFalse(voice_loop.only_the_name(text))
+
+    def test_the_name_in_front_of_a_command_is_dropped(self):
+        import voice_loop
+        self.assertEqual(voice_loop.without_the_name('Hey JARVIS, play a song'), 'play a song')
+        self.assertEqual(voice_loop.without_the_name('Jarvis වෙලාව කීයද'), 'වෙලාව කීයද')
+        self.assertEqual(voice_loop.without_the_name('what time is it'), 'what time is it')
+
+    def test_called_by_name_it_beeps_and_listens_again(self):
+        import numpy
+        import voice_loop
+        listener = voice_loop.Listener.__new__(voice_loop.Listener)
+        heard = iter(['Hey Chavez!', 'වෙලාව කීයද'])
+        listener.ears = MagicMock()
+        listener.ears.transcribe.side_effect = lambda audio, language: (
+            next(heard), 0.1, MagicMock(language='si'))
+        listener.language, listener.last_reply = None, ''
+        for name in ('flush', 'set_state', 'log_utterance'):
+            setattr(listener, name, MagicMock(return_value=0))
+        listener.record_command = MagicMock(return_value=numpy.zeros(16000, dtype='float32'))
+        commands = []
+        with patch.object(voice_loop, 'beep') as beep:
+            self.assertTrue(listener.handle_command([], commands.append, prompt_beep=False))
+        self.assertEqual(commands, ['වෙලාව කීයද'], 'the name is not a question')
+        beep.assert_called_once()
+
+
+class MusicChoiceTests(unittest.TestCase):
+    """Measured 16 Oct: "සින්දුවක් ප්ලේ කරන්න" played a 57-second Short and read out its
+    emoji-strewn title."""
+
+    def test_play_in_sinhala_script_is_not_searched_for(self):
+        import media
+        for text in ('සින්දුවක් ප්ලේ කරන්න', 'sinduwak play karanna', 'සින්දුවක් දාපන්'):
+            with self.subTest(text=text):
+                self.assertEqual(media.understand(text)['query'], 'popular sinhala songs')
+
+    def test_a_song_not_a_short(self):
+        import media
+        def video(n, title, length):
+            return ('{"videoRenderer":{"videoId":"%s","title":{"runs":[{"text":"%s"}]},'
+                    '"lengthText":{"accessibility":{"x":1},"simpleText":"%s"}}' % (n * 11, title, length))
+        page = (video('a', 'Top 10 Songs #ytshorts', '0:57') + video('b', 'Jukebox', '1:30:03') +
+                video('c', 'Guitar lesson', '4:00') + video('d', 'Dewaduthiyak', '3:10'))
+        results = media.youtube_results(page)
+        self.assertEqual([r['seconds'] for r in results], [57, 5403, 240, 190])
+        self.assertEqual(media.best_video(results)['title'], 'Dewaduthiyak')
+        self.assertEqual(media.best_video(results[:2])['title'], 'Jukebox',
+                         'no song-length video: a collection before a Short')
+
+    def test_the_title_is_said_without_emoji_or_tags(self):
+        import responses
+        self.assertEqual(responses.short_title(
+            'ලොව ආකර්ෂණීයම සිංදු😱Top 10 Most Attitude Song🥰#ytshorts#song'),
+            'ලොව ආකර්ෂණීයම සිංදු Top 10 Most Attitude Song')
+        self.assertEqual(responses.short_title('Dewaduthiyak (දේවදූතියක්) | Mihiran | New'),
+                         'Dewaduthiyak (දේවදූතියක්)')
+        self.assertEqual(responses.short_title('[JUKEBOX] හොදම සින්දු ටික'), 'හොදම සින්දු ටික')
+
+
+class WhisperPreloadTests(unittest.TestCase):
+    """Measured 16 Oct: Whisper loaded on the spot inside a command -- 12.7 s."""
+
+    def test_loaded_in_the_background_once(self):
+        import threading
+        import voice_loop
+        started, release = threading.Event(), threading.Event()
+        loads = []
+
+        def slow_ears(model, device):
+            loads.append(model)
+            started.set()
+            release.wait(5)
+            return 'whisper'
+        hearing = voice_loop.Hearing.__new__(voice_loop.Hearing)
+        hearing.whisper, hearing.engine = None, 'auto'
+        hearing.model_name, hearing.whisper_device = 'm', 'auto'
+        with patch.object(voice_loop, 'Ears', side_effect=slow_ears):
+            hearing.preload()
+            self.assertTrue(started.wait(5))
+            waiting = threading.Thread(target=hearing.load_whisper)
+            waiting.start()          # a command arriving during the preload
+            release.set()
+            waiting.join(5)
+        self.assertEqual((loads, hearing.whisper), (['m'], 'whisper'), 'loaded once')
+
+
 class NameClashTests(unittest.TestCase):
     def test_no_function_hides_one_of_its_modules_functions(self):
         """Twice now: `watcher = ...` in voice_loop (Day 16) and `speak = ...` in the

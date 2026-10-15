@@ -57,7 +57,11 @@ ASKING = {'mata', 'මට', 'sindu', 'sinduwak', 'sinduvak', 'sindu', 'සින
           'සිංදු', 'සිංදුවක්', 'song', 'songs', 'music', 'මියුසික්', 'daanna', 'danna',
           'dannako', 'දාන්න', 'දාන්නකෝ', 'play', 'some', 'a', 'ekak', 'එකක්', 'please',
           'karanna', 'ahanna', 'අහන්න', 'me', 'for', 'jarvis', 'ලස්සන', 'lassana', 'hodha',
-          'හොඳ', 'hitha', 'හිත', 'one', 'the', 'කරන්න', 'ඕනේ', 'oni'}
+          'හොඳ', 'hitha', 'හිත', 'one', 'the', 'කරන්න', 'ඕනේ', 'oni',
+          # Google writes "play" in Sinhala script too. Measured 16 Oct: "සින්දුවක් ප්ලේ
+          # කරන්න" searched YouTube for "ප්ලේ song".
+          'ප්ලේ', 'ප්ලෙ', 'කරන්නකෝ', 'කරන්නකො', 'karannako', 'දාපන්', 'දාන්නකො', 'daapan',
+          'dapan', 'ple', 'plei', 'any', 'something', 'song', 'ගීතයක්', 'ගීත'}
 YESTERDAY = re.compile(r'yesterday|iye|ඊයේ|kalin ahapu|last played|again|ආයෙත්', re.I)
 
 
@@ -87,18 +91,56 @@ def youtube_first(query, timeout=10):
                             timeout=timeout).text
     except requests.RequestException as error:
         raise MediaError('YouTube could not be reached') from error
-    found = re.search(r'"videoRenderer":\{"videoId":"([\w-]{11})".*?"title":\{"runs":\[\{"text":"(.*?)"\}',
-                      page)
-    if not found:
+    results = youtube_results(page)
+    if not results:
         raise MediaError(f'nothing found for {query}')
-    try:
-        # The page is JSON inside HTML: "&" and friends are JSON escapes, and
-        # decoding them any other way mangles Sinhala titles.
-        title = json.loads(f'"{found.group(2)}"')
-    except ValueError:
-        title = found.group(2)
-    return {'id': found.group(1), 'title': title,
-            'url': f'https://www.youtube.com/watch?v={found.group(1)}'}
+    return best_video(results)
+
+
+SHORTS = re.compile(r'#\s*(yt)?shorts?\b|#shortvideo|\btop\s*\d+\b|\btutorial\b|\bnotation\b|'
+                    r'\blesson\b|පාඩම', re.I)
+
+
+def youtube_results(page, limit=20):
+    """Every video on a results page, in order: {'id', 'title', 'url', 'seconds'}.
+    seconds is None when the page does not say (a live stream, or a page from a test)."""
+    starts = [m.start() for m in re.finditer(r'"videoRenderer":\{"videoId":"', page)][:limit]
+    results = []
+    for begin, end in zip(starts, starts[1:] + [len(page)]):
+        chunk = page[begin:min(end, begin + 30000)]
+        video = re.search(r'"videoId":"([\w-]{11})"', chunk)
+        title = re.search(r'"title":\{"runs":\[\{"text":"(.*?)"\}', chunk)
+        if not (video and title):
+            continue
+        try:
+            # The page is JSON inside HTML: "&" and friends are JSON escapes, and
+            # decoding them any other way mangles Sinhala titles.
+            text = json.loads(f'"{title.group(1)}"')
+        except ValueError:
+            text = title.group(1)
+        length = re.search(r'"lengthText":\{.*?"simpleText":"([\d:]+)"', chunk)
+        seconds = None
+        if length:
+            seconds = 0
+            for part in length.group(1).split(':'):
+                seconds = seconds * 60 + int(part)
+        results.append({'id': video.group(1), 'title': text, 'seconds': seconds,
+                        'url': f'https://www.youtube.com/watch?v={video.group(1)}'})
+    return results
+
+
+def best_video(results):
+    """A song, not a 15-second Short or a lesson. Measured 16 Oct: "play a song" got
+    "ලොව ආකර්ෂණීයම සිංදු😱Top 10 Most Attitude Song...#ytshorts", 57 seconds long, while a
+    3:10 song sat further down the same page. First choice: a song's length (1:30-10:00)
+    and not a Short; then a longer collection; only then simply the first."""
+    usable = [r for r in results if not SHORTS.search(r['title'])]
+    for fits in (lambda s: s is not None and 90 <= s <= 600,
+                 lambda s: s is not None and s > 600):
+        for result in usable:
+            if fits(result['seconds']):
+                return result
+    return (usable or results)[0]
 
 
 def local_tracks(folders=None):

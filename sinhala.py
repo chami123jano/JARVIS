@@ -301,3 +301,52 @@ def numbers_to_digits(text):
                 hit = None
         out.append(f'{hit[0]}{hit[1]}{hit[2]}' if hit else token)
     return ' '.join(out)
+
+
+# Common Singlish words in Sinhala script. qwen3.5:9b reads Sinhala script well and
+# Singlish badly -- measured: "mama coffee bonne ne, tea witharai" (I don't drink coffee,
+# only tea) became "prefers coffee over tea", and "mata bonchi allergy" (allergic to beans)
+# became "an allergy to drinking". Spelling the words out first fixes what the model
+# cannot. English words -- coffee, project, message -- are left as they are.
+SINGLISH = {
+    'mama': 'මම', 'mata': 'මට', 'mage': 'මගේ', 'mange': 'මගේ', 'oya': 'ඔයා',
+    'oyata': 'ඔයාට', 'oyage': 'ඔයාගේ', 'api': 'අපි', 'apita': 'අපිට', 'apey': 'අපේ',
+    'eya': 'එයා', 'amma': 'අම්මා', 'ammata': 'අම්මාට', 'ammage': 'අම්මාගේ',
+    'thaththa': 'තාත්තා', 'thaththata': 'තාත්තාට', 'nangi': 'නංගි', 'nangita': 'නංගිට',
+    'malli': 'මල්ලි', 'akka': 'අක්කා', 'aiya': 'අයියා',
+    'mokakda': 'මොකක්ද', 'mokadda': 'මොකක්ද', 'monawada': 'මොනවද', 'monawa': 'මොනවා',
+    'kawda': 'කවුද', 'kawuda': 'කවුද', 'koheda': 'කොහෙද', 'kohomada': 'කොහොමද',
+    'keeyada': 'කීයද', 'kiyada': 'කීයද', 'kawadada': 'කවදද', 'ai': 'ඇයි',
+    'eka': 'එක', 'ekak': 'එකක්', 'eke': 'එකේ', 'ekata': 'එකට', 'ekka': 'එක්ක',
+    'gana': 'ගැන', 'gena': 'ගැන', 'kalin': 'කලින්', 'parata': 'කලින්', 'issara': 'ඉස්සර',
+    'kiwwe': 'කිව්වේ', 'kiwwa': 'කිව්වා', 'kiyanna': 'කියන්න', 'kiyala': 'කියලා',
+    'bonne': 'බොන්නේ', 'bonawa': 'බොනවා', 'bonna': 'බොන්න', 'kanne': 'කන්නේ',
+    'kanawa': 'කනවා', 'kanna': 'කන්න', 'ne': 'නෑ', 'na': 'නෑ', 'naha': 'නැහැ',
+    'nehe': 'නැහැ', 'nathi': 'නැති', 'epa': 'එපා', 'ow': 'ඔව්', 'hari': 'හරි',
+    'witharai': 'විතරයි', 'withari': 'විතරයි', 'witharak': 'විතරක්', 'yawanna': 'යවන්න',
+    'danna': 'දාන්න', 'ganna': 'ගන්න', 'karanna': 'කරන්න', 'balanna': 'බලන්න',
+    'hoyanna': 'හොයන්න', 'enawa': 'එනවා', 'yanawa': 'යනවා', 'inne': 'ඉන්නේ',
+    'thiyenne': 'තියෙන්නේ', 'thiyenawa': 'තියෙනවා', 'oni': 'ඕනේ', 'ona': 'ඕනේ',
+    'ada': 'අද', 'heta': 'හෙට', 'iye': 'ඊයේ', 'dan': 'දැන්', 'passe': 'පස්සේ',
+    'ta': 'ට', 'bonchi': 'බෝංචි', 'kiri': 'කිරි', 'bath': 'බත්', 'kema': 'කෑම',
+    'wathura': 'වතුර', 'kamathi': 'කැමති', 'akamathi': 'අකමැති', 'hondai': 'හොඳයි',
+    'gedara': 'ගෙදර', 'wada': 'වැඩ', 'wadeta': 'වැඩේට', 'iskole': 'ඉස්කෝලේ',
+}
+
+
+def singlish_to_script(text):
+    """Singlish written out in Sinhala script, or the text unchanged.
+
+    Only when at least two words are recognisably Singlish, so that English -- "I had a
+    word with mama" -- is never rewritten.
+    """
+    tokens = str(text).split()
+    known = [t for t in tokens if t.lower().strip(',.?!') in SINGLISH]
+    if len(known) < 2:
+        return text
+    out = []
+    for token in tokens:
+        core = token.lower().strip(',.?!')
+        tail = token[len(token.rstrip(',.?!')):]
+        out.append(SINGLISH[core] + tail if core in SINGLISH else token)
+    return ' '.join(out)

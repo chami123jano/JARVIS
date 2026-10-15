@@ -991,6 +991,8 @@ def build_brain(args):
 
     proactive = daily.Routines(store, say_unprompted, busy=lambda: hooks['busy'](),
                                waiting_messages=lambda: len(inbox))
+    # Day 14: whatever it learns about you, it says. Never a secret memory.
+    agent.on_learned = lambda facts: say_unprompted(responses.say_learned(facts))
 
     # Multi-step tasks (Day 20). The model writes the plan; tasks.Runner carries it out
     # in the background, so JARVIS keeps listening -- for "stop" above all.
@@ -1112,6 +1114,8 @@ def build_brain(args):
 
     def start_watching():
         """Start speaking first: reminders and routines, and arriving messages."""
+        # Index anything saved while JARVIS was off, so it can be found by meaning.
+        agent.memory.reindex_in_background()
         if not getattr(proactive, 'thread', None):
             proactive.thread = proactive.start()
         if not notifications.allowed_apps(store):
@@ -1305,6 +1309,7 @@ def build_brain(args):
             # note and never called the tool. The database is the proof, not the reply.
             try:
                 tools.execute('save_note', {'title': decision['content'], 'content': ''})
+                agent.memory.reindex_in_background()
                 reply = responses.say_note_saved(decision['content'], lang)
             except Exception as error:
                 print(f'  save failed: {error}', file=sys.stderr)

@@ -967,6 +967,37 @@ is NOT done.
 
 ---
 
+#### ✅ Day 14 complete — recalled from two weeks ago, past sixty newer memories
+
+A conversation about the pharmacy demo, summarised and dated two weeks back, then sixty
+unrelated memories saved after it -- the old "newest 25" prompt would never have reached
+it. "mokakda mama parata kiwwe project eka gana" and the same question in Sinhala script
+both answered: the POS demo for the Nugegoda branch. "mama coffee bonne ne, tea
+witharai" was learned as "only drinks tea, not coffee", said aloud, and "mama mokakda
+bonne?" later answered "tea, not coffee".
+
+`memory.py`, with nomic-embed-text (274 MB, local):
+
+  - **Search by meaning, through an English gloss.** Measured (bench_memory.py, twelve
+    memories, twelve differently-worded questions): the embedding model alone found 7 --
+    every question in Sinhala script missed, since to it all Sinhala looks alike. Glossed
+    first by the fast brain, 11 first time and 12 in the top three.
+  - **Five relevant records per request**, not the newest 25 dumped in every time.
+    Scores of right and wrong matches overlap (0.58-0.76 against up to 0.68), so the
+    model is given five and judges.
+  - **Old conversation rolled into dated summaries** in chunks of 30, before the 200-
+    message store drops it, and searchable like everything else.
+  - **Facts it hears, said aloud**: "මම ඒක මතක තියාගන්නම්. ඔයා ..." Only first-person
+    statements are checked; the same fact twice is kept once. The console's Memory page
+    shows what was learned, and anything can be deleted.
+
+Found by running it: **qwen3.5:9b does not read Singlish.** It turned "mama coffee
+bonne ne" (I don't drink coffee) into "prefers coffee" -- and announced it -- and "mata
+bonchi allergy" into "an allergy to drinking". Asking it to transliterate first was
+worse. A word list of common Singlish words, spelled out in Sinhala script before the
+model sees them, fixed the first: it reads script well. "බෝංචි" still glosses as
+"penicillin" sometimes; the announcement is there so a wrong fact is heard and deleted.
+
 ### Day 14 — Memory that remembers
 
 **Goal:** it remembers you across months, not the last 14 messages.

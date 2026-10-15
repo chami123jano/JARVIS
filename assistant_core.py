@@ -53,7 +53,7 @@ class Store:
             db.execute('INSERT OR REPLACE INTO config VALUES (?,?)', (key, json.dumps(value)))
 
     def add(self, kind, title, content='', due=None):
-        if kind not in ('note', 'memory', 'reminder') or not str(title).strip():
+        if kind not in ('note', 'memory', 'reminder', 'summary') or not str(title).strip():
             raise ValueError('A record needs a type and title.')
         if due:
             due = dt.datetime.fromisoformat(due).astimezone().isoformat()

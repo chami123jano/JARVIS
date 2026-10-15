@@ -765,3 +765,14 @@ def say_cannot_see(reason, lang='si'):
     if lang == 'en':
         return f'I could not look at that. {reason}.'
     return 'ඒක බලන්න බැරි වුණා.'
+
+
+# ---------------------------------------------------------------- memory (Day 14)
+
+def say_learned(facts, lang=None):
+    """Said every time something is remembered. Secret memory loses trust."""
+    spoken = '. '.join(f['spoken'].rstrip('.') for f in facts)
+    lang = lang or language_of(spoken)
+    if lang == 'en':
+        return f"I'll remember that. {spoken}."
+    return f'මම ඒක මතක තියාගන්නම්. {spoken}.'

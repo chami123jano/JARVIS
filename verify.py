@@ -604,6 +604,23 @@ def deep_think():
     return PASS, 'hard questions right: ' + ', '.join(f'{b} {s}' for b, s in scores.items())
 
 
+@check('day 14', 'Memory: search by meaning, summaries, facts it says aloud')
+def remembers():
+    import memory
+    import requests
+    from assistant_core import ROOT as CORE_ROOT, Store
+    names = [m['name'].split(':')[0] for m in
+             requests.get(memory.ENDPOINT + '/api/tags', timeout=5).json()['models']]
+    if memory.EMBED_MODEL not in names:
+        return FAIL, f'{memory.EMBED_MODEL} is not installed: ollama pull {memory.EMBED_MODEL}'
+    mem = memory.Memory(Store(CORE_ROOT / 'data' / 'jarvis.db'))
+    indexed, waiting = len(mem.vectors()), len(mem.missing())
+    if waiting > 20:
+        return WARN, f'{waiting} records not yet searchable; python memory.py --reindex'
+    return PASS, (f'{indexed} records searchable by meaning, {waiting} waiting, '
+                  f'{len(mem.unsummarised())} messages not yet summarised')
+
+
 @check('day 27', 'Always on: service, autostart, Ollama')
 def always_on():
     import jarvis_service as service
@@ -683,7 +700,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, remembers, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

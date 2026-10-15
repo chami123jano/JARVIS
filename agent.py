@@ -8,10 +8,11 @@ import uuid
 
 import requests
 
+import memory
 import permissions
 from assistant_core import schemas
 from responses import language_of
-from sinhala import numbers_to_digits
+from sinhala import numbers_to_digits, singlish_to_script
 
 # Raised from 8 now that native tool calling makes each step cheap.
 MAX_TOOL_CALLS = 16
@@ -65,6 +66,10 @@ class Agent:
         # Optional callback(answer) invoked when a request finishes. The server uses it
         # to speak the reply; keeping it a callback leaves the agent independent of audio.
         self.on_answer = None
+        # Optional callback([{en, spoken}]) when facts are learned from what was said, so
+        # the caller can say so. Memory that is never mentioned is secret memory.
+        self.on_learned = None
+        self.memory = memory.Memory(store, endpoint)
 
     def start(self, prompt):
         with self.lock:
@@ -156,8 +161,10 @@ class Agent:
             self.event(job_id, 'Tool failed', str(error), 'error')
             return {'error': str(error)}
 
-    def system_prompt(self):
-        memories = [r for r in self.store.records() if r['kind'] == 'memory'][:25]
+    def system_prompt(self, prompt=''):
+        # The records closest in meaning to this request, not the newest 25 (Day 14): a
+        # fixed dump stops working once there are hundreds, and misses anything older.
+        memories = memory.context_for(self.store, prompt, self.memory)
         return ('You are JARVIS, Chamindu\'s personal desktop assistant. You are calm, brief and '
                 'quietly witty. Two sentences is usually plenty; never pad an answer. '
                 'Reply in the language the user wrote in — if they write Sinhala, answer in Sinhala. '
@@ -176,7 +183,9 @@ class Agent:
                 'Browser tools only open a search page; they do not read the results. '
                 'Reminders are spoken aloud when due, console open or not. Ask for a date when one is missing. '
                 f'Local time: {dt.datetime.now().astimezone().isoformat()}. '
-                f'What you know about the user: {json.dumps(memories, ensure_ascii=False)}')
+                'What you know about the user -- the saved notes, memories and past '
+                'conversation summaries most relevant to this request, each with the date it '
+                f'was saved: {json.dumps(memories, ensure_ascii=False)}')
 
     def run(self, job_id, prompt):
         job = self.jobs[job_id]
@@ -195,6 +204,10 @@ class Agent:
                 with self.lock:
                     job['model'] = model
                 asked = prompt
+                spelled = singlish_to_script(prompt)
+                if spelled != prompt:
+                    # Measured: qwen3.5 read "mokakda mama parata kiwwe" as "uncle ... road".
+                    asked = f'{prompt}\n(The same, in Sinhala script: {spelled})'
                 if deep:
                     with self.lock:
                         job['deep'] = True
@@ -209,7 +222,7 @@ class Agent:
                                f'{model} does not fit beside the fast brain in 15.6 GB, so the '
                                'fast one is unloaded first. Loading takes about 40 seconds; '
                                'the thinking itself, a few minutes.')
-                messages = [{'role': 'system', 'content': self.system_prompt()}, *history,
+                messages = [{'role': 'system', 'content': self.system_prompt(prompt)}, *history,
                             {'role': 'user', 'content': asked}]
                 answer = ''
                 calls = 0
@@ -264,6 +277,8 @@ class Agent:
                     answer = self.translate(answer, 'everyday spoken Sinhala')
                     self.event(job_id, 'Translated back', answer)
             self.store.message('assistant', answer)
+            threading.Thread(target=self.after_answer, args=(job_id, prompt), daemon=True,
+                             name='memory').start()
             with self.lock:
                 job['answer'], job['state'], job['partial'] = answer, 'done', ''
             self.event(job_id, 'Finished', 'Results saved to conversation')
@@ -298,6 +313,22 @@ class Agent:
         if not response.ok:
             raise ValueError(f'could not translate: {response.text[:200]}')
         return (response.json().get('message') or {}).get('content', '').strip() or text
+
+    def after_answer(self, job_id, prompt):
+        """Housekeeping after each answer, off the answer's path: index what is new, keep
+        any lasting fact the user stated about themselves, and roll up old conversation."""
+        if self.store.config('model', '') not in self.installed():
+            return          # nothing to gloss or extract with; a test, or Ollama is down
+        try:
+            self.memory.reindex()
+            learned = self.memory.learn(prompt)
+            if learned:
+                self.event(job_id, 'Remembered', '; '.join(f['en'] for f in learned))
+                if self.on_learned:
+                    self.on_learned(learned)
+            self.memory.roll_up()
+        except Exception as error:
+            self.event(job_id, 'Memory housekeeping failed', str(error)[:200], 'error')
 
     def wants_deep(self, prompt):
         """Asked to think hard, and the deep brain is configured."""

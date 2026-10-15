@@ -252,7 +252,7 @@ class Speaker:
                     said += 1
                     spoken.append(voice)
                 if offline:
-                    result = self.offline_fallback(text) if fallback else {'spoken': False}
+                    result = self.offline_fallback(text, number) if fallback else {'spoken': False}
                     result.update(reason='offline', detail=self.last_error, pieces=said)
                     return result
                 return {'spoken': True, 'reason': 'ok', 'pieces': said,
@@ -260,20 +260,27 @@ class Speaker:
             finally:
                 self.speaking = False
 
-    def offline_fallback(self, text):
-        """No internet: read the English with a Windows voice, show the Sinhala.
-
-        Windows has no Sinhala voice, so Sinhala cannot be spoken offline at all. Saying
-        so plainly is better than silence, and the caller still displays the text.
+    def offline_fallback(self, text, number=None):
+        """No internet: JARVIS's own offline Sinhala voice if it is installed (Day 29);
+        otherwise the English with a Windows voice and the Sinhala on screen.
         """
         parts = list(segments(text))
+        if any(voice != ENGLISH_VOICE for voice, _ in parts):
+            try:
+                import offline_voice
+                if offline_voice.available():
+                    return self.speak_offline(parts, text, number)
+            except Exception as error:
+                self.last_error = f'offline voice failed: {error}'
         english = ' '.join(piece for voice, piece in parts if voice == ENGLISH_VOICE)
         note = 'I cannot reach the speech service, so this is on screen only.'
         sinhala_words = sum(len(piece.split()) for voice, piece in parts if voice != ENGLISH_VOICE)
         if sinhala_words and sinhala_words <= SPEAK_ROMANISED_UP_TO:
-            # A short Sinhala reply, read in Latin letters by the English voice: "ayubowan
-            # chamindu" is understood; "on screen only" says nothing. Added on 15 Oct 2026,
-            # when the Sinhala voice service began refusing requests.
+            # A short Sinhala reply, read in Latin letters by the English voice. The last
+            # resort, used only without the offline voice: measured by Google's si-LK
+            # recogniser (bench_offline_voice.py --baseline) it scores 0.31, none of ten
+            # sentences understood -- against 0.91 for the offline voice. Still better
+            # than "on screen only", which says nothing at all.
             english = ' '.join(speakable_roman(piece) if voice != ENGLISH_VOICE else piece
                                for voice, piece in parts)
         try:
@@ -285,6 +292,23 @@ class Speaker:
         except Exception as error:
             return {'spoken': False, 'fallback': 'none', 'text': text,
                     'detail': str(error)[:120]}
+
+
+    def speak_offline(self, parts, text, number=None):
+        """Sinhala by the offline Piper voice, English by the Windows voice, in order."""
+        import offline_voice
+        number = number or self.take_number()
+        sapi = None
+        for voice, piece in parts:
+            if self.is_cancelled(number):
+                return {'spoken': True, 'fallback': 'offline', 'reason': 'interrupted', 'text': text}
+            if voice == ENGLISH_VOICE:
+                import win32com.client
+                sapi = sapi or win32com.client.Dispatch('SAPI.SpVoice')
+                sapi.Speak(piece, 0)            # in order with the Sinhala around it
+            elif not self.play(offline_voice.synthesize(piece, SAMPLE_RATE), number):
+                return {'spoken': True, 'fallback': 'offline', 'reason': 'interrupted', 'text': text}
+        return {'spoken': True, 'fallback': 'offline', 'text': text}
 
 
 SPEAKER = Speaker()

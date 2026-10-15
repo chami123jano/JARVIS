@@ -112,3 +112,44 @@ class LocalStillWorksTests(UnpluggedCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class OfflineSinhalaVoiceTests(UnpluggedCase):
+    """Day 29: unplugged, Sinhala is still spoken -- by JARVIS's own offline voice."""
+
+    def test_sinhala_goes_to_the_offline_voice_and_english_to_windows(self):
+        import numpy
+        import offline_voice
+        speaker = speech.Speaker()
+        played, said = [], []
+        sapi = MagicMock()
+        sapi.Speak.side_effect = lambda text, flags: said.append(text)
+        with patch.object(speech, 'synthesize', side_effect=speech.Offline('down')), \
+                patch.object(offline_voice, 'available', return_value=True), \
+                patch.object(offline_voice, 'synthesize',
+                             side_effect=lambda text, rate: played.append(text) or numpy.zeros(10)), \
+                patch.object(speaker, 'play', return_value=True), \
+                patch('win32com.client.Dispatch', return_value=sapi):
+            result = speaker.say('හරි, දානවා. Best Sinhala Songs.')
+        self.assertEqual(result['fallback'], 'offline')
+        self.assertTrue(played and all(speech.is_sinhala(t) for t in played))
+        self.assertTrue(said and not any(speech.is_sinhala(t) for t in said))
+
+    def test_without_the_model_the_old_fallback_still_works(self):
+        import offline_voice
+        speaker = speech.Speaker()
+        with patch.object(speech, 'synthesize', side_effect=speech.Offline('down')), \
+                patch.object(offline_voice, 'available', return_value=False), \
+                patch('win32com.client.Dispatch', return_value=MagicMock()):
+            self.assertEqual(speaker.say('හරි')['fallback'], 'sapi')
+
+    def test_the_real_voice_speaks_with_no_network(self):
+        """Aeroplane mode: the network is cut, and Sinhala audio still comes out."""
+        import offline_voice
+        if not offline_voice.available():
+            self.skipTest('offline voice not installed yet')
+        with unplugged() as attempts:
+            audio = offline_voice.synthesize('ආයුබෝවන් චමින්දු.', speech.SAMPLE_RATE)
+        self.assertGreater(len(audio) / speech.SAMPLE_RATE, 0.5)
+        self.assertGreater(float(abs(audio).max()), 0.05, 'not silence')
+        self.assertEqual(attempts, [])

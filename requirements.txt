@@ -45,3 +45,7 @@ Pillow>=11,<14
 
 # The tray icon for the background service (Day 27).
 pystray>=0.19,<1
+
+# The offline Sinhala voice (Day 29): Piper runs it on the CPU. The voice itself is
+# trained separately -- see voice-training/README.md.
+piper-tts>=1.8,<2

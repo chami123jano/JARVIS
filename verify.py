@@ -646,6 +646,21 @@ def remembers():
                   f'{len(mem.unsummarised())} messages not yet summarised')
 
 
+@check('day 29', 'Offline Sinhala voice: speaks with the network cut')
+def offline_sinhala():
+    import offline_voice
+    import speech
+    if not offline_voice.available():
+        return WARN, 'not installed: see voice-training/README.md'
+    sys.path.insert(0, str(ROOT / 'tests'))
+    from offline import unplugged
+    with unplugged() as attempts:
+        audio = offline_voice.synthesize('ආයුබෝවන් චමින්දු.', speech.SAMPLE_RATE)
+    if attempts or float(abs(audio).max()) < 0.05:
+        return FAIL, 'no Sinhala audio without the network'
+    return PASS, f'{len(audio) / speech.SAMPLE_RATE:.1f}s of Sinhala with no network'
+
+
 @check('day 16', 'Presence: knows when you are there, no camera')
 def knows_presence():
     import presence
@@ -784,7 +799,7 @@ ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, hardened, always_on]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, offline_sinhala, hardened, always_on]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

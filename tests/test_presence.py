@@ -121,7 +121,7 @@ class WordingTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / 'voice_loop.py').read_text(encoding='utf-8')
         announce = next(n for n in ast.walk(ast.parse(source))
                         if isinstance(n, ast.FunctionDef) and n.name == 'announce')
-        self.assertIn('watcher.away', ast.unparse(announce))
+        self.assertIn('presence_watch.away', ast.unparse(announce))
 
 
 if __name__ == '__main__':

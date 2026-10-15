@@ -1121,6 +1121,13 @@ Found by doing it:
     "ayubowan chamindu" is understood.
   - **Two tests deleted their folder while the agent was still writing to it**, failing
     one run in a few. The agent can now be waited for.
+  - **The first Day 16 deploy crashed on every start**, and was committed before the
+    restart was checked. Inside start_watching the message watcher and the presence
+    watcher were both called `watcher`, so Python took the name as local there:
+    UnboundLocalError. Every unit test had passed, because none of them ever called
+    start_watching. `tests/test_startup.py` now starts JARVIS the way the service does --
+    and fails on the broken version. The same clash would have broken every message
+    announcement too.
 
 ### Day 16 — Presence
 

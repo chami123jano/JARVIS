@@ -771,6 +771,62 @@ def say_thinking_deeply(lang='si'):
             'ඒ වෙනකම් මම ටිකක් හෙමින් වැඩ කරන්නේ.')
 
 
+# ---------------------------------------------------------------- email (Day 9)
+
+def sender_name(message):
+    """"Kasun Perera" -> "Kasun Perera"; "noreply@daraz.lk" -> "daraz"."""
+    name = str(message.get('from', '')).strip().strip('"')
+    if '@' in name or not name:
+        domain = str(message.get('address', name)).split('@')[-1]
+        name = domain.split('.')[0] if domain else 'someone'
+    return name[:40]
+
+
+def say_new_mail(found, lang='si', brief=False):
+    """What is new: how many, then who and what about, newest first (at most three)."""
+    count, messages = found.get('count', 0), found.get('messages', [])[:3]
+    if not count:
+        if brief:
+            return ''
+        return 'No new email.' if lang == 'en' else 'අලුත් ඊමේල් නෑ.'
+    each = [f"{sender_name(m)}: {short_title(m['subject'], 70)}" for m in messages]
+    if lang == 'en':
+        head = 'One new email.' if count == 1 else f'{count} new emails.'
+        return ' '.join([head] + [f'{line}.' for line in each])
+    head = 'අලුත් ඊමේල් එකක් තියෙනවා.' if count == 1 else f'අලුත් ඊමේල් {count}ක් තියෙනවා.'
+    return ' '.join([head] + [f'{line}.' for line in each])
+
+
+def say_mail_from(who, messages, lang='si'):
+    if not messages:
+        return (f'No recent email from {who}.' if lang == 'en'
+                else f'{who} ගෙන් ළඟදී ඊමේල් ආවේ නෑ.')
+    first = messages[0]
+    when = str(first.get('when', ''))[:10]
+    if lang == 'en':
+        return f"The latest from {sender_name(first)}, on {when}: {short_title(first['subject'], 70)}."
+    return f"{sender_name(first)} ගෙන් අන්තිමට ආවේ {when}: {short_title(first['subject'], 70)}."
+
+
+def say_mail_not_set_up(lang='si'):
+    return ('Email is not set up yet. Run mail.py --setup.' if lang == 'en'
+            else 'ඊමේල් තාම set up කරලා නෑ.')
+
+
+def say_which_mail(lang='si'):
+    return ('Which email? Ask me to check your email first.' if lang == 'en'
+            else 'මොන ඊමේල් එකද? මුලින් "ඊමේල් බලන්න" කියන්න.')
+
+
+def say_mail_sent(to, lang='si'):
+    return f'Sent to {to}.' if lang == 'en' else f'{to}ට ඊමේල් එක යැව්වා.'
+
+
+def say_mail_failed(reason, lang='si'):
+    return (f'I could not do that: {reason}.' if lang == 'en'
+            else 'ඊමේල් එක කරන්න බැරි වුණා.')
+
+
 def say_no_answer(lang='si'):
     """The model failed or timed out. Measured 16 Oct: "HTTPConnectionPool(host=
     '127.0.0.1', port=11434): Read timed out." was read aloud as the answer."""

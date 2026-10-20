@@ -91,8 +91,19 @@ COMMANDS = {
         'ada puvath monavada', 'puvath monavada', 'news monavada', 'todays news',
     ],
     'email': [
-        'ඊමේල් බලන්න', 'ඊමේල් එක බලන්න', 'මේල් බලන්න',
+        'ඊමේල් බලන්න', 'ඊමේල් එක බලන්න', 'මේල් බලන්න', 'මොනවද ඊමේල් ආවේ',
         'email balanna', 'email eka balanna', 'mail balanna', 'check my email',
+        'mokakda email awe', 'any new email',
+    ],
+    # Day 9: the email just mentioned, read out, or answered.
+    'read_email': [
+        'ඒ ඊමේල් එක කියවන්න', 'ඊමේල් එක කියවන්න', 'ඒකේ මොකක්ද තියෙන්නේ',
+        'email eka kiyawanna', 'mail eka kiyawanna', 'read that email', 'read the email',
+    ],
+    'reply_email': [
+        'ඒකට reply කරන්න', 'ඊමේල් එකට reply කරන්න', 'ඊමේල් එකට උත්තර දෙන්න',
+        'ekata reply karanna', 'email ekata reply karanna', 'reply to that email',
+        'reply saying',
     ],
     'screenshot': [
         'ස්ක්‍රීන්ෂොට් එකක් ගන්න', 'ස්ක්‍රීන් එක ගන්න',
@@ -214,6 +225,9 @@ KEYWORDS = {
     # A routine opens with its time -- "හැමදාම රෑ දහයට ... මතක් කරන්න" -- so the head of
     # the sentence looks like no phrasing, and the order is only in the verb.
     'reminder': ['මතක්', 'mathak', 'remind'],
+    # A reply carries a whole dictated message, so it sounds like no phrasing at all.
+    'reply_email': ['reply', 'රිප්ලයි'],
+    'email': ['email', 'emails', 'ඊමේල්', 'mail'],
 }
 KEYWORD_FLOOR = .78
 
@@ -503,7 +517,26 @@ FILLER = {
                    'teach', 'yourself'],
     'open_app': ['ඕපන්', 'කරන්න', 'එක', 'විවෘත', 'open', 'karanna', 'eka', 'launch',
                  'start', 'up'],
+    # What is left is whose mail you mean: "Daraz eken email awada" -> "Daraz".
+    'email': ['ඊමේල්', 'මේල්', 'බලන්න', 'එක', 'එකක්', 'ආවද', 'ආවා', 'ආවේ', 'මොනවද', 'එකෙන්',
+              'ගෙන්', 'ගෙන්ද', 'තියෙනවද', 'email', 'emails', 'mail', 'balanna', 'eka', 'ekak',
+              'awada', 'aawada', 'awa', 'awe', 'eken', 'gen', 'genda', 'thiyenawada', 'check',
+              'my', 'any', 'new', 'from', 'did', 'i', 'get', 'have', 'mokakda', 'monawada',
+              'is', 'there', 'the', 'what'],
 }
+
+# A reply's own words come off its two ends only, never from inside the message: matched
+# by sound, "දෙන්න" took the "enna" out of "mata heta enna be" (I can't come tomorrow).
+REPLY_ENDS = re.compile(
+    r'^(?:\s*(?:ඒකට|ඊමේල්|එකට|reply|රිප්ලයි|කරන්න|උත්තරයක්|උත්තර|දෙන්න|ekata|email|eka|'
+    r'karanna|to|that|this|saying|and|say|jarvis)\b[\s,:]*)+|'
+    r'(?:[\s,]*\b(?:ඒකට|ඊමේල්|එකට|reply|රිප්ලයි|කරන්න|උත්තරයක්|උත්තර|දෙන්න|ekata|email|'
+    r'karanna)\b)+[\s.!]*$', re.I)
+
+
+def reply_words_off(text):
+    """"ekata reply karanna mata heta enna be kiyala" -> "mata heta enna be kiyala"."""
+    return re.sub(r'\s+', ' ', REPLY_ENDS.sub('', str(text))).strip(' ,.')
 
 
 def strip_command(text, command, use_phrasing=True):
@@ -680,6 +713,13 @@ def route(text):
         clock = extract_clock(text)
         if clock:
             result['at'] = clock[0]
+    elif name == 'email':
+        # Empty: what is new. A name left over: that sender's mail.
+        result['content'] = strip_command(text, name, use_phrasing=False)
+    elif name == 'reply_email':
+        result['content'] = reply_words_off(text)
+        if not result['content']:
+            result.update(action='ask', detail='reply')
     elif name in ('save_note', 'send_message', 'open_app'):
         result['content'] = strip_command(text, name, use_phrasing=(name != 'open_app'))
         if not result['content']:
@@ -697,6 +737,7 @@ CARD_TITLES = {
     'play_music': 'Play music', 'volume_up': 'Louder', 'volume_down': 'Quieter',
     'open_app': 'Open an app', 'dollar_rate': 'Dollar rate', 'save_note': 'Save a note',
     'list_notes': 'Read my notes', 'news': 'News', 'email': 'Email',
+    'read_email': 'Read that email', 'reply_email': 'Reply to it',
     'screenshot': 'Screenshot', 'lock_pc': 'Lock the PC', 'calculate': 'Calculate',
     'capabilities': 'What can you do', 'read_messages': 'What messages came',
     'briefing': 'Briefing now, or set its time', 'look_screen': "What's on screen / this error",
@@ -726,6 +767,16 @@ def card():
              '| Several steps in one go | ... හොයලා, එකතු කරලා, සේව් කරලා ... / "then" |',
              '| Think hard | හොඳට හිතලා බලන්න ... / think hard about ... |',
              '| About your files | mage CV eke mona skills tikada thiyenne |',
+             '| A price in Sri Lanka | iPhone 16 එක කීයද · galaxy s25 eka kiyada · how '
+             'much is a macbook air |',
+             '| A fact (Wikipedia) | සීගිරිය හැදුවේ කවුද · යාපනය කොහෙද · who painted the '
+             'mona lisa |',
+             '| A web page (typed) | read https://... and tell me ... |',
+             '| Fill a form (typed) | fill the form at https://... with name ... -- you '
+             'press submit |',
+             '| Email from someone | Daraz eken email awada · any email from Kasun |',
+             '| A reply, in your words | ඒකට reply කරන්න, මම හෙට එන්නම් කියලා -- read '
+             'back in English, sent only on ඔව් |',
              '| Answer a question JARVIS asked | ඔව් / හරි / yes -- නෑ / එපා / no |',
              '| A task that failed | ආයෙත් (retry) · මඟහරින්න (skip) · නවත්වන්න (stop) |',
              '| Mute the microphone | Ctrl+Alt+J |', '']

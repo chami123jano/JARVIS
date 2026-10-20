@@ -115,11 +115,17 @@ def briefing(store, lang='si', moment=None, waiting_messages=0, lookups=None):
     import knowledge
     import responses
     moment = moment or now_local()
-    lookups = lookups or {
-        'weather': lambda: responses.say_weather(knowledge.weather(), lang),
-        'dollar': lambda: responses.say_dollar(knowledge.dollar_rate(), lang),
-        'news': lambda: responses.say_news(knowledge.news(), lang),
-    }
+    if lookups is None:
+        lookups = {
+            'weather': lambda: responses.say_weather(knowledge.weather(), lang),
+            'dollar': lambda: responses.say_dollar(knowledge.dollar_rate(), lang),
+            'news': lambda: responses.say_news(knowledge.news(), lang),
+        }
+        import mail
+        if mail.is_set_up():
+            # Day 9: new mail in the Primary tab, said briefly; nothing if there is none.
+            lookups['email'] = lambda: responses.say_new_mail(
+                mail.WATCHER.fresh() or mail.WATCHER.refresh(), lang, brief=True)
     with ThreadPoolExecutor(max_workers=len(lookups)) as pool:
         futures = {name: pool.submit(build) for name, build in lookups.items()}
     online = {}
@@ -136,11 +142,14 @@ def briefing(store, lang='si', moment=None, waiting_messages=0, lookups=None):
                                      todays_routines(store, moment), lang))
     if waiting_messages:
         parts.append(responses.say_messages_waiting(waiting_messages, lang))
+    if online.get('email'):
+        parts.append(online['email'])
     if 'dollar' in online:
         parts.append(online['dollar'])
     if 'news' in online:
         parts.append(online['news'])
-    if not online:
+    if not any(name in online for name in ('weather', 'dollar', 'news')):
+        # Not "if not online": mail the watcher saw minutes ago is no sign of a connection.
         parts.append(responses.say_offline(lang))
     return ' '.join(part for part in parts if part)
 

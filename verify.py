@@ -839,13 +839,29 @@ def reads_the_web():
                   f'Chrome, {time.monotonic() - started:.0f}s')
 
 
+@check('day 9', 'Email: read-only inbox, sending allowed')
+def reads_email():
+    import smtplib
+    import mail
+    if not mail.is_set_up():
+        return WARN, 'not set up (python mail.py --setup)'
+    started = time.monotonic()
+    found = mail.new_mail(1)
+    # Logging in for sending proves the password works for it; nothing is sent.
+    address, password = mail.credential()
+    with smtplib.SMTP_SSL(mail.SMTP_HOST, 465, timeout=mail.TIMEOUT) as server:
+        server.login(address, password)
+    return PASS, (f"{found['count']} unread in Primary, sending login accepted, "
+                  f'{time.monotonic() - started:.0f}s -- nothing read out, nothing sent')
+
+
 ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
          google_stt, whisper_loads, vad_check, transcribe_clips, command_accuracy,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, the_face, offline_sinhala, hardened, always_on, reads_the_web]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, the_face, offline_sinhala, hardened, always_on, reads_the_web, reads_email]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

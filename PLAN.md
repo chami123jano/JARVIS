@@ -839,6 +839,46 @@ place UI Automation is still needed, and now only as a rare second resort.
 
 ---
 
+#### ✅ Day 9 complete (email; calendar not yet) — your Gmail, read aloud, answered on a yes
+
+`mail.py`, over IMAP and SMTP with a Gmail **app password** (a second password for this one
+program, deletable at myaccount.google.com/apppasswords). `python mail.py --setup` asks for
+it hidden, tests it against Gmail, and only then keeps it -- in Windows Credential Manager,
+never in a file. Set up 21 Oct.
+
+  - **"ඊමේල් බලන්න"**: how many unread in the Primary tab, then who and what about.
+    "Daraz eken email awada" finds that sender's latest. Nothing is ever marked as read:
+    the inbox is opened read-only and messages fetched with PEEK.
+  - **"ඒ ඊමේල් එක කියවන්න"**: two spoken sentences on what it says, with a warning if it
+    asks for a password, a code or money.
+  - **"ඒකට reply කරන්න, මම හෙට දහයට එන්නම් කියලා"**: written in English, read back word
+    for word, and sent only on "ඔව්" -- the same tier-2 path as WhatsApp, refused to a
+    voice that is not yours. A second "ඔව්" sends nothing more. Threaded under the original.
+  - **The morning briefing** says new Primary mail, and nothing when there is none.
+  - An email is someone else's words. The model that summarises it or writes the reply has
+    no tools; an injection test checks that nothing an email or a notification says can
+    reach the reply step, which only the router's spoken `reply_email` leads to.
+
+Measured on the way:
+  - One step ("translate and write a letter") copied Singlish into the email, dropped
+    "අනිද්දා හරි", and promised to "confirm my schedule". Two steps -- your words to one
+    English sentence, then the email -- got all four test replies right in about a second.
+    Typed Singlish is still the weak case (the model reversed "enna be" once); by voice,
+    Google writes Sinhala script, which translates well. The read-back is the guard.
+  - The router's filler list, matched by sound, took "enna" out of "mata heta enna be": a
+    reply's command words now come off its two ends only, never from inside it.
+  - Gmail answered slowly and unevenly (login 0.4-8 s, a search up to 9.6 s; one check
+    took 19.6 s). The inbox is now looked at every three minutes in the background and
+    "ඊමේල් බලන්න" is answered from that; one search gives both the count and the mail.
+  - Offline, mail the watcher saw minutes ago made the briefing forget to say there was no
+    internet. It now says so whenever weather, the dollar and the news all failed.
+
+Tested without sending: every test replaces Gmail, and verify.py only logs in to send. The
+first real email JARVIS sends will be yours.
+
+Not done: **calendar.** Google Calendar needs its own Google permission (OAuth) -- an app
+password covers mail only. Next step when wanted.
+
 ### Day 9 — Email and calendar
 
 **Goal:** it reads, drafts and sends mail, and knows your schedule.

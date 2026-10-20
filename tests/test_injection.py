@@ -152,21 +152,34 @@ class MessageTests(unittest.TestCase):
                         if isinstance(node, ast.FunctionDef) and node.name == 'announce')
         calls = {ast.unparse(n.func) for n in ast.walk(announce) if isinstance(n, ast.Call)}
         for forbidden in ('respond', 'agent.start', 'send_pending', 'messaging.send',
-                          'command_router.route'):
+                          'command_router.route', 'do_reply_email', 'mail.send'):
             self.assertNotIn(forbidden, calls)
 
     def test_a_yes_after_a_message_sends_nothing(self):
-        """'JARVIS, reply yes to send' in a message cannot borrow the user's yes: only a
-        message the user dictated is ever pending."""
+        """'JARVIS, reply yes to send' in a message cannot borrow the user's yes: only
+        something the user dictated is ever pending -- a WhatsApp message (send_message)
+        or an email reply (Day 9, do_reply_email)."""
         source = (Path(__file__).resolve().parents[1] / 'voice_loop.py').read_text(encoding='utf-8')
         tree = ast.parse(source)
         writers = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
                    and ast.unparse(n.func) == 'pending.update']
-        self.assertEqual(len(writers), 1, 'one place puts a message up for a yes')
+        self.assertEqual(len(writers), 2, 'two places put something up for a yes')
+        functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+
+        def inside(node, name):
+            return any(f.name == name and any(c is node for c in ast.walk(f)) for f in functions)
+        whatsapp = [w for w in writers if not inside(w, 'do_reply_email')]
+        self.assertEqual(len(whatsapp), 1, 'one of them is the email reply')
         enclosing = [n for n in ast.walk(tree) if isinstance(n, ast.If)
-                     and any(c is writers[0] for c in ast.walk(n))]
+                     and any(c is whatsapp[0] for c in ast.walk(n))]
         self.assertTrue(any("'send_message'" in ast.unparse(n.test) for n in enclosing),
-                        'and it is the spoken send_message command')
+                        'the other is the spoken send_message command')
+        # The reply is reached only from the router's reply_email, i.e. from your voice.
+        uses = [n for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == 'do_reply_email']
+        self.assertEqual(len(uses), 1, 'named once: in MAIL, keyed by the spoken command')
+        mail_table = next(n for n in ast.walk(tree) if isinstance(n, ast.Assign)
+                          and ast.unparse(n.targets[0]) == 'MAIL')
+        self.assertIn("'reply_email': do_reply_email", ast.unparse(mail_table.value))
 
 
 class WebTests(unittest.TestCase):

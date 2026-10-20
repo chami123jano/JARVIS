@@ -110,6 +110,12 @@ def describe(action, detail, lang='si'):
             return f'Sending to {who}: "{what}". Shall I?'
         # The dative attaches to the name, so "අම්මාට", not "අම්මා ට".
         return f'{who}ට යවනවා: "{what}". යවන්නද?'
+    if action == 'send_email':
+        # The exact email, in the English it will go out in, before a yes (Day 9).
+        who, what = detail.get('to', '?'), detail.get('text', '')
+        if lang == 'en':
+            return f'Emailing {who}: "{what}". Shall I send it?'
+        return f'{who}ට මේ ඊමේල් එක යවනවා: "{what}". යවන්නද?'
     if lang == 'en':
         return f'About to {action.replace("_", " ")}. Shall I?'
     return f'{action.replace("_", " ")} කරන්නද?'

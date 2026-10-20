@@ -1299,6 +1299,9 @@ def build_brain(args):
         live.serve(speaking=lambda: speech.SPEAKER.speaking, answer=answer_typed)
         # Load the offline voice now, not on the first reply (2 s, measured 16 Oct).
         threading.Thread(target=preload_offline_voice, daemon=True, name='voice-preload').start()
+        # Your inbox, looked at every three minutes, so "ඊමේල් බලන්න" is answered at once.
+        import mail
+        mail.WATCHER.start()
         # Index anything saved while JARVIS was off, so it can be found by meaning.
         agent.memory.reindex_in_background()
         # Your files under D:\me (Day 13): only what changed is read, every ten minutes.
@@ -1338,6 +1341,63 @@ def build_brain(args):
             return responses.say_app_missing(spoken[:30], lang)
         pc_control.open_app(spoken)
         return responses.say_opened(app['name'].title(), lang)
+
+    # Email (Day 9): the mail last spoken about, so "read it" and "reply to it" know which.
+    mailbox = {'messages': [], 'current': None}
+
+    def do_email(decision, lang):
+        import mail
+        if not mail.is_set_up():
+            return responses.say_mail_not_set_up(lang)
+        if not may_act_outward(strict=False):
+            return responses.say_not_owner(lang)      # your mail is said to you only
+        who = decision.get('content', '').strip()
+        try:
+            if who:
+                found = mail.find(f'{who} newer_than:60d', 3)
+                reply = responses.say_mail_from(who, found, lang)
+            else:
+                news = mail.WATCHER.fresh() or mail.WATCHER.refresh()
+                found = news['messages']
+                reply = responses.say_new_mail(news, lang)
+        except mail.MailError as error:
+            print(f'  mail: {error}', file=sys.stderr)
+            return responses.say_mail_failed(str(error), lang)
+        mailbox.update(messages=found, current=found[0] if found else None)
+        return reply
+
+    def do_read_email(decision, lang):
+        import mail
+        message = mailbox['current']
+        if not message:
+            return responses.say_which_mail(lang)
+        if not may_act_outward(strict=False):
+            return responses.say_not_owner(lang)
+        try:
+            return mail.summarise(message, lang)
+        except mail.MailError as error:
+            print(f'  mail: {error}', file=sys.stderr)
+            return responses.say_mail_failed(str(error), lang)
+
+    def do_reply_email(decision, lang):
+        """Write it, read it back, wait. Sent only by send_pending, after a yes."""
+        import mail
+        message = mailbox['current']
+        if not message:
+            return responses.say_which_mail(lang)
+        if not may_act_outward():
+            return responses.say_not_owner(lang)
+        try:
+            meant, body = mail.write_reply(decision['content'], message)
+        except mail.MailError as error:
+            print(f'  mail: {error}', file=sys.stderr)
+            return responses.say_mail_failed(str(error), lang)
+        draft = mail.reply_to(message, body)
+        print(f'  mail: understood as "{meant}"', flush=True)
+        pending.clear()
+        pending.update(kind='email', draft=draft, language=lang)
+        return permissions.describe('send_email',
+                                    {'to': responses.sender_name(message), 'text': body}, lang)
 
     def do_play(decision, lang):
         """Day 26: choose, say what it is, then start it -- after the reply has been
@@ -1421,9 +1481,31 @@ def build_brain(args):
     # A message waiting for a yes. Held here rather than acted on, so the next thing
     # said is interpreted as an answer to the question just asked.
     pending = {}
+    MAIL = {'email': do_email, 'read_email': do_read_email, 'reply_email': do_reply_email}
+
+    def pending_detail():
+        """What is waiting for a yes, as it goes into the log of outward actions."""
+        if pending.get('kind') == 'email':
+            draft = pending['draft']
+            return 'send_email', {'to': draft['to'], 'subject': draft['subject'],
+                                  'text': draft['body']}
+        return 'send_message', {'to': pending['person']['name'], 'text': pending['text']}
 
     def send_pending(lang):
         """Carry out the message that was just confirmed."""
+        if pending.get('kind') == 'email':
+            import mail
+            draft = pending['draft']
+            action, detail = pending_detail()
+            pending.clear()
+            try:
+                mail.send(draft)
+            except mail.MailError as error:
+                permissions.log(store, action, detail, f'failed: {error}')
+                return responses.say_mail_failed(str(error), lang)
+            permissions.log(store, action, detail, 'sent')
+            return responses.say_mail_sent(responses.sender_name(
+                {'from': draft.get('name'), 'address': draft['to']}), lang)
         person, body = pending.get('person'), pending.get('text')
         pending.clear()
         auto = bool(store.config('auto_send', False))
@@ -1473,9 +1555,7 @@ def build_brain(args):
                     speech.SPEAKER.say(reply)
                 return reply
             if permissions.is_no(text):
-                permissions.log(store, 'send_message',
-                                {'to': pending['person']['name'], 'text': pending['text']},
-                                'cancelled')
+                permissions.log(store, *pending_detail(), 'cancelled')
                 pending.clear()
                 reply = 'Cancelled.' if lang == 'en' else 'හරි, යැව්වේ නෑ.'
                 print(f'  JARVIS: {reply}', flush=True)
@@ -1545,6 +1625,8 @@ def build_brain(args):
             except Exception as error:
                 print(f'  lookup failed: {error}', file=sys.stderr)
                 reply = responses.say_offline(lang)
+        elif decision['action'] == 'command' and decision['command'] in MAIL:
+            reply = MAIL[decision['command']](decision, lang)
         elif decision['action'] == 'command' and decision['command'] == 'send_message' \
                 and not may_act_outward():
             reply = responses.say_not_owner(lang)
@@ -1562,7 +1644,8 @@ def build_brain(args):
             else:
                 # Read back exactly what will be sent, then wait. Nothing is sent on the
                 # strength of one misheard sentence.
-                pending.update(person=person, text=body, language=lang)
+                pending.clear()            # never a WhatsApp message under an email's label
+                pending.update(kind='whatsapp', person=person, text=body, language=lang)
                 reply = permissions.describe(
                     'send_message',
                     {'to': contacts.speakable(person, lang), 'text': body}, lang)

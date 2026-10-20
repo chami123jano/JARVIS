@@ -53,3 +53,7 @@ piper-tts>=1.8,<2
 # Reading the web (Day 11): drives the Chrome already installed -- no browser download,
 # no "playwright install".
 playwright>=1.64,<2
+
+# The calendar (Day 9): Google Calendar's secret iCal address, recurring events expanded.
+icalendar>=6,<7
+recurring-ical-events>=3,<4

@@ -1366,6 +1366,20 @@ def build_brain(args):
         mailbox.update(messages=found, current=found[0] if found else None)
         return reply
 
+    def do_agenda(decision, lang):
+        """Day 9: today's calendar, or tomorrow's if the sentence says so."""
+        import agenda
+        if not agenda.is_set_up():
+            return responses.say_agenda_not_set_up(lang)
+        if not may_act_outward(strict=False):
+            return responses.say_not_owner(lang)
+        tomorrow = bool(re.search(r'හෙට|heta|tomorrow', decision['text'], re.I))
+        try:
+            return responses.say_agenda(agenda.day(1 if tomorrow else 0), tomorrow, lang)
+        except agenda.AgendaError as error:
+            print(f'  calendar: {error}', file=sys.stderr)
+            return responses.say_offline(lang)
+
     def do_read_email(decision, lang):
         import mail
         message = mailbox['current']
@@ -1481,7 +1495,8 @@ def build_brain(args):
     # A message waiting for a yes. Held here rather than acted on, so the next thing
     # said is interpreted as an answer to the question just asked.
     pending = {}
-    MAIL = {'email': do_email, 'read_email': do_read_email, 'reply_email': do_reply_email}
+    MAIL = {'email': do_email, 'read_email': do_read_email, 'reply_email': do_reply_email,
+            'agenda': do_agenda}
 
     def pending_detail():
         """What is waiting for a yes, as it goes into the log of outward actions."""

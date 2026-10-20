@@ -839,7 +839,7 @@ place UI Automation is still needed, and now only as a rare second resort.
 
 ---
 
-#### ✅ Day 9 complete (email; calendar not yet) — your Gmail, read aloud, answered on a yes
+#### ✅ Day 9 complete — your Gmail, read aloud, answered on a yes; your calendar, said
 
 `mail.py`, over IMAP and SMTP with a Gmail **app password** (a second password for this one
 program, deletable at myaccount.google.com/apppasswords). `python mail.py --setup` asks for
@@ -876,8 +876,16 @@ Measured on the way:
 Tested without sending: every test replaces Gmail, and verify.py only logs in to send. The
 first real email JARVIS sends will be yours.
 
-Not done: **calendar.** Google Calendar needs its own Google permission (OAuth) -- an app
-password covers mail only. Next step when wanted.
+**The calendar** (`agenda.py`), built the same night, from Google Calendar's *secret
+address in iCal format*: read-only, no Google Cloud project or sign-in, kept in Credential
+Manager like the email password (both now through `vault.py`). "අද මොනවද තියෙන්නේ" and
+"heta mokada thiyenne" say the day's events with their times -- "උදේ නවයට Database
+lecture (Hall B)" -- and the morning briefing says today's after your reminders. Weekly
+and monthly events are expanded; an event stored in UTC is said in Sri Lankan time; what
+has finished is not said. Only titles, times and places: a description is never read.
+Tested on sample calendars; **it starts working when you paste the address**
+(`python agenda.py --setup`). Creating events is not built: an iCal address is read-only,
+and JARVIS's own reminders already cover "remind me at ...".
 
 ### Day 9 — Email and calendar
 

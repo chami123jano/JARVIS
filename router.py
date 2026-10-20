@@ -95,6 +95,12 @@ COMMANDS = {
         'email balanna', 'email eka balanna', 'mail balanna', 'check my email',
         'mokakda email awe', 'any new email',
     ],
+    # Day 9: what is on the calendar, today or ("heta", "tomorrow") tomorrow.
+    'agenda': [
+        'අද මොනවද තියෙන්නේ', 'අද calendar එකේ මොනවද', 'හෙට මොනවද තියෙන්නේ',
+        'ada mokada thiyenne', 'heta mokada thiyenne', 'calendar eka balanna',
+        "what's on today", "what's on tomorrow", 'my calendar today',
+    ],
     # Day 9: the email just mentioned, read out, or answered.
     'read_email': [
         'ඒ ඊමේල් එක කියවන්න', 'ඊමේල් එක කියවන්න', 'ඒකේ මොකක්ද තියෙන්නේ',
@@ -738,6 +744,7 @@ CARD_TITLES = {
     'open_app': 'Open an app', 'dollar_rate': 'Dollar rate', 'save_note': 'Save a note',
     'list_notes': 'Read my notes', 'news': 'News', 'email': 'Email',
     'read_email': 'Read that email', 'reply_email': 'Reply to it',
+    'agenda': "What's on today / tomorrow",
     'screenshot': 'Screenshot', 'lock_pc': 'Lock the PC', 'calculate': 'Calculate',
     'capabilities': 'What can you do', 'read_messages': 'What messages came',
     'briefing': 'Briefing now, or set its time', 'look_screen': "What's on screen / this error",
@@ -775,6 +782,7 @@ def card():
              '| Fill a form (typed) | fill the form at https://... with name ... -- you '
              'press submit |',
              '| Email from someone | Daraz eken email awada · any email from Kasun |',
+             '| Tomorrow, not today | හෙට මොනවද තියෙන්නේ · heta mokada thiyenne |',
              '| A reply, in your words | ඒකට reply කරන්න, මම හෙට එන්නම් කියලා -- read '
              'back in English, sent only on ඔව් |',
              '| Answer a question JARVIS asked | ඔව් / හරි / yes -- නෑ / එපා / no |',

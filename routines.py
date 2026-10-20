@@ -121,6 +121,11 @@ def briefing(store, lang='si', moment=None, waiting_messages=0, lookups=None):
             'dollar': lambda: responses.say_dollar(knowledge.dollar_rate(), lang),
             'news': lambda: responses.say_news(knowledge.news(), lang),
         }
+        import agenda
+        if agenda.is_set_up():
+            # Day 9: what is on the calendar today; nothing said if it is empty.
+            lookups['calendar'] = lambda: responses.say_agenda(agenda.day(0, moment), False,
+                                                               lang, brief=True)
         import mail
         if mail.is_set_up():
             # Day 9: new mail in the Primary tab, said briefly; nothing if there is none.
@@ -140,6 +145,8 @@ def briefing(store, lang='si', moment=None, waiting_messages=0, lookups=None):
         parts.append(online['weather'])
     parts.append(responses.say_today(todays_reminders(store, moment),
                                      todays_routines(store, moment), lang))
+    if online.get('calendar'):
+        parts.append(online['calendar'])
     if waiting_messages:
         parts.append(responses.say_messages_waiting(waiting_messages, lang))
     if online.get('email'):

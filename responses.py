@@ -808,6 +808,39 @@ def say_mail_from(who, messages, lang='si'):
     return f"{sender_name(first)} ගෙන් අන්තිමට ආවේ {when}: {short_title(first['subject'], 70)}."
 
 
+def say_agenda(events, tomorrow=False, lang='si', brief=False):
+    """The calendar for a day: all-day things first, then each with its time (Day 9).
+    Titles and places only -- a description is never read out."""
+    if not events:
+        if brief:
+            return ''
+        if lang == 'en':
+            return f"Nothing on your calendar {'tomorrow' if tomorrow else 'today'}."
+        return f"{'හෙට' if tomorrow else 'අද'} calendar එකේ මුකුත් නෑ."
+    lines = []
+    for event in events[:4]:
+        place = f" ({event['place']})" if event.get('place') else ''
+        if event['all_day']:
+            lines.append(f"{event['title']}{place}")
+        elif lang == 'en':
+            lines.append(f"{english_at(event['start'])}, {event['title']}{place}")
+        else:
+            lines.append(f"{clock_at(event['start'])} {event['title']}{place}")
+    count = len(events)
+    if lang == 'en':
+        head = f"{'Tomorrow' if tomorrow else 'Today'} on your calendar:"
+        return ' '.join([head] + [f'{line}.' for line in lines])
+    day = 'හෙට' if tomorrow else 'අද'
+    head = (f'{day} calendar එකේ එක දෙයක් තියෙනවා.' if count == 1 else
+            f'{day} calendar එකේ දේවල් {number_word(count)}ක් තියෙනවා.')
+    return ' '.join([head] + [f'{line}.' for line in lines])
+
+
+def say_agenda_not_set_up(lang='si'):
+    return ('Your calendar is not connected yet. Run agenda.py --setup.' if lang == 'en'
+            else 'Calendar එක තාම සම්බන්ධ කරලා නෑ.')
+
+
 def say_mail_not_set_up(lang='si'):
     return ('Email is not set up yet. Run mail.py --setup.' if lang == 'en'
             else 'ඊමේල් තාම set up කරලා නෑ.')

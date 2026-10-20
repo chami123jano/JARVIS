@@ -32,7 +32,7 @@ from email.message import EmailMessage
 from email.utils import parseaddr, parsedate_to_datetime
 
 IMAP_HOST, SMTP_HOST = 'imap.gmail.com', 'smtp.gmail.com'
-CREDENTIAL = 'JARVIS/gmail'
+CREDENTIAL = 'gmail'                      # "JARVIS/gmail" in Credential Manager
 TIMEOUT = 20
 NEWEST = 5
 # Gmail's own idea of what matters: the Primary tab, not Promotions or Social.
@@ -46,31 +46,22 @@ class MailError(Exception):
 # ---------------------------------------------------------------- the password
 
 def save_credential(address, password):
-    import win32cred
-    win32cred.CredWrite({'Type': win32cred.CRED_TYPE_GENERIC, 'TargetName': CREDENTIAL,
-                         'UserName': address, 'CredentialBlob': password,
-                         'Comment': 'Gmail app password for JARVIS (mail.py)',
-                         'Persist': win32cred.CRED_PERSIST_LOCAL_MACHINE}, 0)
+    import vault
+    vault.save(CREDENTIAL, address, password, 'Gmail app password for JARVIS (mail.py)')
 
 
 def credential():
     """(address, app password), or raises MailError if setup has not been done."""
+    import vault
     try:
-        import win32cred
-        found = win32cred.CredRead(CREDENTIAL, win32cred.CRED_TYPE_GENERIC, 0)
-    except Exception as error:
+        return vault.read(CREDENTIAL)
+    except vault.Missing as error:
         raise MailError('email is not set up yet (python mail.py --setup)') from error
-    blob = found['CredentialBlob']
-    password = blob.decode('utf-16-le') if isinstance(blob, bytes) else str(blob)
-    return found['UserName'], password
 
 
 def forget():
-    import win32cred
-    try:
-        win32cred.CredDelete(CREDENTIAL, win32cred.CRED_TYPE_GENERIC, 0)
-    except Exception:
-        pass
+    import vault
+    vault.forget(CREDENTIAL)
 
 
 def is_set_up():

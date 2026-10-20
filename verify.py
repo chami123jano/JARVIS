@@ -855,13 +855,24 @@ def reads_email():
                   f'{time.monotonic() - started:.0f}s -- nothing read out, nothing sent')
 
 
+@check('day 9', 'Calendar: today and tomorrow')
+def reads_calendar():
+    import agenda
+    if not agenda.is_set_up():
+        return WARN, 'not set up (python agenda.py --setup)'
+    started = time.monotonic()
+    today, tomorrow = agenda.day(0), agenda.day(1)
+    return PASS, (f'{len(today)} today, {len(tomorrow)} tomorrow, '
+                  f'{time.monotonic() - started:.0f}s -- titles not shown')
+
+
 ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
          google_stt, whisper_loads, vad_check, transcribe_clips, command_accuracy,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, the_face, offline_sinhala, hardened, always_on, reads_the_web, reads_email]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, the_face, offline_sinhala, hardened, always_on, reads_the_web, reads_email, reads_calendar]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

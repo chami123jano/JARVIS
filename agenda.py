@@ -103,10 +103,46 @@ def day(offset=0, moment=None, text=None):
     return events
 
 
+def shape(url):
+    """The address with its secret hidden, safe to show or tell anyone: which kind it is
+    and whether it was pasted whole. 21 Oct: "did not give a calendar", with no way to say
+    why without showing the secret."""
+    shown = re.sub(r'private-[0-9a-f]+', lambda m: f'private-<{len(m.group(0)) - 8} hidden>',
+                   str(url))
+    shown = re.sub(r'/ical/([^/]{2})[^/%@]*(%40|@)', r'/ical/\1...\2', shown)
+    return f'{shown}  ({len(url)} characters)'
+
+
+def diagnose(url):
+    """What came back instead of a calendar, in words, without the address."""
+    import requests
+    hints = []
+    if '/public/' in url:
+        hints.append('This is the PUBLIC address. It works only if the calendar is shared '
+                     'publicly. Copy the "Secret address in iCal format" instead -- it has '
+                     '"private-" in it.')
+    try:
+        response = requests.get(url, timeout=TIMEOUT, allow_redirects=False)
+    except requests.RequestException as error:
+        return f'Could not reach Google at all: {type(error).__name__}.'
+    start = response.text[:200].lstrip()
+    kind = ('a calendar' if start.startswith('BEGIN:VCALENDAR') else
+            'a web page' if start.lower().startswith(('<!doctype', '<html')) else
+            'empty' if not start else 'something else')
+    said = f"Google answered {response.status_code} ({response.headers.get('Content-Type', '?')}): {kind}."
+    if response.status_code in (301, 302, 303, 307):
+        said += ' It sent us elsewhere -- usually to sign in, meaning the address is not a secret one.'
+    elif response.status_code == 404:
+        hints.append('404 means Google has no calendar at that address. If "Reset" was pressed '
+                     'after copying, the old address stops working: copy it again.')
+    return '\n'.join([said] + hints)
+
+
 def setup():
     print('JARVIS calendar setup. In Google Calendar: Settings -> your calendar -> '
           '"Integrate calendar" -> "Secret address in iCal format". Copy that address.')
-    url = getpass.getpass('Secret address (hidden as you paste): ').strip()
+    url = getpass.getpass('Secret address (hidden as you paste): ').strip().strip('"\'<> ')
+    print(f'Got: {shape(url)}')
     if not re.match(r'https://[^\s]+\.ics(\?.*)?$', url):
         print('That is not an iCal address (it should start with https:// and end in .ics). '
               'Nothing was saved.')
@@ -117,6 +153,7 @@ def setup():
                                 dt.datetime.now().astimezone() + dt.timedelta(days=7), text)
     except AgendaError as error:
         print(f'{error}. Nothing was saved.')
+        print(diagnose(url))
         return 1
     import vault
     vault.save(CREDENTIAL, 'Google Calendar', url, 'Calendar secret iCal address for JARVIS')

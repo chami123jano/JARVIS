@@ -29,9 +29,11 @@ class NumberTests(unittest.TestCase):
         self.assertEqual(phone.speakable_number('94771234567'), '077 123 4567')
 
     def test_a_call_is_a_tel_link_for_phone_link(self):
-        with patch.object(phone.os, 'startfile', create=True) as opened:
-            self.assertEqual(phone.call('94771234567'), {'dialing': '+94771234567'})
+        with patch.object(phone.os, 'startfile', create=True) as opened,                 patch.object(phone, 'press_call', return_value=True) as pressed:
+            self.assertEqual(phone.call('94771234567'),
+                             {'dialing': '+94771234567', 'pressed': True})
         opened.assert_called_once_with('tel:+94771234567')
+        pressed.assert_called_once_with('94771234567')
         with self.assertRaises(phone.PhoneError):
             phone.call('123')
 
@@ -73,6 +75,7 @@ class ConversationTests(unittest.TestCase):
             patch.object(contacts, 'find', side_effect=lambda store, text:
                          AMMA if 'amm' in text.lower() or 'අම්මා' in text else None),
             patch.object(phone.os, 'startfile', create=True),
+            patch.object(phone, 'press_call', return_value=True),
             patch.object(phone.webbrowser, 'open', return_value=True),
         ]
         for p in self.patches:
@@ -93,6 +96,13 @@ class ConversationTests(unittest.TestCase):
         self.dialled.assert_called_once_with('tel:+94771234567')
         self.respond('ඔව්', speak=False)
         self.dialled.assert_called_once()           # a second yes dials nothing more
+
+    def test_if_phone_link_only_fills_the_number_it_says_so(self):
+        """Measured 21 Oct: a tel: link fills the dial pad and waits for Call."""
+        self.respond('අම්මාට call එකක් ගන්න', speak=False)
+        with patch.object(phone, 'press_call', return_value=False):
+            said = self.respond('ඔව්', speak=False)
+        self.assertEqual(said, responses.say_press_call('අම්මා', 'si'))
 
     def test_no_dials_nothing(self):
         self.respond('අම්මාට call එකක් ගන්න', speak=False)

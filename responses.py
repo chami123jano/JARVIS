@@ -846,6 +846,11 @@ def say_calling(who, lang='si'):
             else f'{who}ට iPhone එකෙන් call කරනවා.')
 
 
+def say_press_call(who, lang='si'):
+    return (f"{who}'s number is in Phone Link. Press Call there." if lang == 'en'
+            else f'{who}ගේ number එක Phone Link එකේ දැම්මා. Call ඔබන්න.')
+
+
 def say_who_to_call(lang='si'):
     return ('Who should I call? Say a name from your contacts, or the number.' if lang == 'en'
             else 'කාටද call කරන්නේ? contacts වල නමක් හරි number එක හරි කියන්න.')

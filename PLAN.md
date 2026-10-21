@@ -836,6 +836,12 @@ default app for TEL links (it had been Skype for Business).
   - **SMS: not built.** Phone Link gives a program no way to send one; WhatsApp by voice
     (Day 7) covers messages.
 
+Found on the first live call (21 Oct): a tel: link fills Phone Link's dial pad and waits
+for Call. JARVIS now presses it through Windows' accessibility interface -- only when the
+button's own label carries exactly the number you said yes to; otherwise it says "press
+Call". Phone Link's window was on the second monitor, which is why the first screenshot
+showed nothing.
+
 Found: the new call command tied with the reminder on "පැය දෙකකින් අම්මාට කෝල් කරන්න මතක්
 කරන්න" -- asking to be reminded to call. When a sentence says මතක් (remind), the reminder
 wins now. JARVIS has no contacts saved yet; numbers said aloud work meanwhile.

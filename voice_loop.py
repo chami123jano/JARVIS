@@ -1540,10 +1540,13 @@ def build_brain(args):
             who = pending['who']
             pending.clear()
             try:
-                phone.call(detail['number'])
+                placed = phone.call(detail['number'])
             except phone.PhoneError as error:
                 permissions.log(store, action, detail, f'failed: {error}')
                 return responses.say_phone_failed(lang)
+            if not placed.get('pressed'):
+                permissions.log(store, action, detail, 'number filled in Phone Link, not pressed')
+                return responses.say_press_call(who, lang)
             permissions.log(store, action, detail, 'dialled through Phone Link')
             return responses.say_calling(who, lang)
         if pending.get('kind') == 'email':

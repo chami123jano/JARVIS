@@ -51,8 +51,49 @@ def speakable_number(digits):
     return '+' + digits
 
 
+# Phone Link's dial pad, read through Windows' accessibility interface. The Call button's
+# name carries the number it will dial ("Call Dialed number + 9 4   7 1 ..."), so it is
+# pressed only when that is exactly the number you said yes to.
+PRESS_CALL = r'''
+param([string]$Digits, [switch]$DryRun)
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+$deadline = (Get-Date).AddSeconds(8)
+while ((Get-Date) -lt $deadline) {
+  foreach ($p in Get-Process PhoneExperienceHost -ErrorAction SilentlyContinue) {
+    if ($p.MainWindowHandle -eq 0) { continue }
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
+    $id = New-Object System.Windows.Automation.PropertyCondition(
+      [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'ButtonCall')
+    $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $id)
+    if ($button -and (($button.Current.Name -replace '\D', '') -eq $Digits)) {
+      if ($DryRun) { 'found'; exit 0 }
+      $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+      'pressed'; exit 0
+    }
+  }
+  Start-Sleep -Milliseconds 400
+}
+'not found'
+'''
+
+
+def press_call(digits, dry_run=False):
+    """Press Phone Link's Call button if it shows exactly these digits. True if pressed
+    (or, dry run, found). Measured 21 Oct: a tel: link fills the dial pad and waits."""
+    import subprocess
+    command = ['powershell', '-NoProfile', '-NonInteractive', '-Command',
+               f'& {{{PRESS_CALL}}} -Digits {digits}' + (' -DryRun' if dry_run else '')]
+    try:
+        done = subprocess.run(command, capture_output=True, text=True, timeout=20,
+                              creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return done.stdout.strip().splitlines()[-1:] == ['found' if dry_run else 'pressed']
+
+
 def call(digits):
-    """Place the call through Phone Link. Only ever after a spoken yes."""
+    """Place the call through Phone Link. Only ever after a spoken yes.
+    {'dialing', 'pressed'}: pressed is False when Phone Link only filled the dial pad."""
     digits = re.sub(r'\D', '', str(digits))
     if not 10 <= len(digits) <= 15:
         raise PhoneError(f'{digits!r} is not a phone number')
@@ -60,7 +101,7 @@ def call(digits):
         os.startfile(f'tel:+{digits}')
     except OSError as error:
         raise PhoneError('Phone Link did not open the call') from error
-    return {'dialing': f'+{digits}'}
+    return {'dialing': f'+{digits}', 'pressed': press_call(digits)}
 
 
 def find():

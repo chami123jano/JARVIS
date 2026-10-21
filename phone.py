@@ -55,7 +55,7 @@ def speakable_number(digits):
 # name carries the number it will dial ("Call Dialed number + 9 4   7 1 ..."), so it is
 # pressed only when that is exactly the number you said yes to.
 PRESS_CALL = r'''
-param([string]$Digits, [switch]$DryRun)
+param([string]$Digits, [string]$Local = '', [switch]$DryRun)
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $deadline = (Get-Date).AddSeconds(8)
 while ((Get-Date) -lt $deadline) {
@@ -65,7 +65,8 @@ while ((Get-Date) -lt $deadline) {
     $id = New-Object System.Windows.Automation.PropertyCondition(
       [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'ButtonCall')
     $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $id)
-    if ($button -and (($button.Current.Name -replace '\D', '') -eq $Digits)) {
+    $shown = $button.Current.Name -replace '\D', ''
+    if ($button -and ($shown -eq $Digits -or ($Local -and $shown -eq $Local))) {
       if ($DryRun) { 'found'; exit 0 }
       $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
       'pressed'; exit 0
@@ -79,10 +80,16 @@ while ((Get-Date) -lt $deadline) {
 
 def press_call(digits, dry_run=False):
     """Press Phone Link's Call button if it shows exactly these digits. True if pressed
-    (or, dry run, found). Measured 21 Oct: a tel: link fills the dial pad and waits."""
+    (or, dry run, found). Measured 21 Oct: a tel: link fills the dial pad and waits.
+
+    The same number may be shown either way -- "+94 71 150 8512" one time, "077 311 8512"
+    the next -- so the local form of a Sri Lankan number counts too; no other number does."""
     import subprocess
+    digits = re.sub(r'\D', '', str(digits))
+    local = '0' + digits[2:] if digits.startswith('94') and len(digits) == 11 else ''
     command = ['powershell', '-NoProfile', '-NonInteractive', '-Command',
-               f'& {{{PRESS_CALL}}} -Digits {digits}' + (' -DryRun' if dry_run else '')]
+               f'& {{{PRESS_CALL}}} -Digits {digits}' + (f' -Local {local}' if local else '')
+               + (' -DryRun' if dry_run else '')]
     try:
         done = subprocess.run(command, capture_output=True, text=True, timeout=20,
                               creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))

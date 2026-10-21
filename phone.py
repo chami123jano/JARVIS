@@ -81,7 +81,7 @@ while ((Get-Date) -lt $deadline) {
           [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)
         foreach ($window in $desktop.FindAll([System.Windows.Automation.TreeScope]::Children, $pid_)) {
           foreach ($t in $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $text)) {
-            if ($t.Current.Name -match "find your iPhone|not connected|connect your iPhone") {
+            if ($t.Current.Name -match "find your iPhone|not connected|connect your iPhone|need permission to sync|almost there") {
               'no iphone'; exit 0
             }
           }

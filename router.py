@@ -95,6 +95,15 @@ COMMANDS = {
         'email balanna', 'email eka balanna', 'mail balanna', 'check my email',
         'mokakda email awe', 'any new email',
     ],
+    # Day 8: a call through the iPhone (Phone Link), and finding the phone.
+    'call': [
+        'අම්මාට call එකක් ගන්න', 'call එකක් ගන්න', 'කෝල් එකක් ගන්න', 'call කරන්න',
+        'ammata call ekak ganna', 'call ekak ganna', 'call karanna', 'call amma',
+    ],
+    'find_phone': [
+        'මගේ phone එක කොහෙද', 'ෆෝන් එක කොහෙද', 'ෆෝන් එක හොයන්න',
+        'mage phone eka koheda', 'phone eka hoyanna', 'where is my phone', 'find my phone',
+    ],
     # Day 9: what is on the calendar, today or ("heta", "tomorrow") tomorrow.
     'agenda': [
         'අද මොනවද තියෙන්නේ', 'අද calendar එකේ මොනවද', 'හෙට මොනවද තියෙන්නේ',
@@ -233,6 +242,7 @@ KEYWORDS = {
     'reminder': ['මතක්', 'mathak', 'remind'],
     # A reply carries a whole dictated message, so it sounds like no phrasing at all.
     'reply_email': ['reply', 'රිප්ලයි'],
+    'call': ['call', 'කෝල්', 'kol'],
     'email': ['email', 'emails', 'ඊමේල්', 'mail'],
 }
 KEYWORD_FLOOR = .78
@@ -646,6 +656,13 @@ def route(text):
     music = music_intent(text)
     if music:
         name, score, second, second_score = music, 1.0, name, 0.0
+    elif {name, second} & {'call', 'reply_email', 'email'} and \
+            {name, second} <= {'call', 'reply_email', 'email', 'reminder'} and \
+            has_keyword(text, 'reminder'):
+        # "පැය දෙකකින් අම්මාට කෝල් කරන්න මතක් කරන්න" asks to be reminded to call, not to
+        # call now. Measured 21 Oct: the new call command tied with the reminder.
+        other = second if name == 'reminder' else name
+        name, score, second, second_score = 'reminder', max(score, KEYWORD_FLOOR), other, 0.0
     result = {'text': text, 'phonetic': cleaned, 'command': name, 'score': round(score, 3),
               'runner_up': second, 'runner_up_score': round(second_score, 3),
               # Replies follow the language they were asked in.
@@ -745,6 +762,7 @@ CARD_TITLES = {
     'list_notes': 'Read my notes', 'news': 'News', 'email': 'Email',
     'read_email': 'Read that email', 'reply_email': 'Reply to it',
     'agenda': "What's on today / tomorrow",
+    'call': 'Call someone (iPhone)', 'find_phone': "Where's my phone",
     'screenshot': 'Screenshot', 'lock_pc': 'Lock the PC', 'calculate': 'Calculate',
     'capabilities': 'What can you do', 'read_messages': 'What messages came',
     'briefing': 'Briefing now, or set its time', 'look_screen': "What's on screen / this error",
@@ -782,6 +800,7 @@ def card():
              '| Fill a form (typed) | fill the form at https://... with name ... -- you '
              'press submit |',
              '| Email from someone | Daraz eken email awada · any email from Kasun |',
+             '| Call a number | 0771234567ට call කරන්න -- read back, dialled on ඔව් |',
              '| Tomorrow, not today | හෙට මොනවද තියෙන්නේ · heta mokada thiyenne |',
              '| A reply, in your words | ඒකට reply කරන්න, මම හෙට එන්නම් කියලා -- read '
              'back in English, sent only on ඔව් |',

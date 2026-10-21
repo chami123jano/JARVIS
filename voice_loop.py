@@ -1366,6 +1366,30 @@ def build_brain(args):
         mailbox.update(messages=found, current=found[0] if found else None)
         return reply
 
+    def do_call(decision, lang):
+        """Day 8: a call through the iPhone (Phone Link). Read back; placed only on a yes."""
+        import phone
+        if not may_act_outward():
+            return responses.say_not_owner(lang)
+        person = contacts.find(store, decision['text'])
+        number = person['phone'] if person else phone.number_in(decision['text'])
+        if not number:
+            return responses.say_who_to_call(lang)
+        who = contacts.speakable(person, lang) if person else phone.speakable_number(number)
+        pending.clear()
+        pending.update(kind='call', number=number, who=who, language=lang)
+        return permissions.describe('call', {'to': who, 'number': phone.speakable_number(number)
+                                             if person else ''}, lang)
+
+    def do_find_phone(decision, lang):
+        import phone
+        try:
+            phone.find()
+        except phone.PhoneError as error:
+            print(f'  phone: {error}', file=sys.stderr)
+            return responses.say_failed('', lang)
+        return responses.say_find_phone(lang)
+
     def do_agenda(decision, lang):
         """Day 9: today's calendar, or tomorrow's if the sentence says so."""
         import agenda
@@ -1496,10 +1520,12 @@ def build_brain(args):
     # said is interpreted as an answer to the question just asked.
     pending = {}
     MAIL = {'email': do_email, 'read_email': do_read_email, 'reply_email': do_reply_email,
-            'agenda': do_agenda}
+            'agenda': do_agenda, 'call': do_call, 'find_phone': do_find_phone}
 
     def pending_detail():
         """What is waiting for a yes, as it goes into the log of outward actions."""
+        if pending.get('kind') == 'call':
+            return 'call', {'to': pending['who'], 'number': pending['number']}
         if pending.get('kind') == 'email':
             draft = pending['draft']
             return 'send_email', {'to': draft['to'], 'subject': draft['subject'],
@@ -1508,6 +1534,18 @@ def build_brain(args):
 
     def send_pending(lang):
         """Carry out the message that was just confirmed."""
+        if pending.get('kind') == 'call':
+            import phone
+            action, detail = pending_detail()
+            who = pending['who']
+            pending.clear()
+            try:
+                phone.call(detail['number'])
+            except phone.PhoneError as error:
+                permissions.log(store, action, detail, f'failed: {error}')
+                return responses.say_phone_failed(lang)
+            permissions.log(store, action, detail, 'dialled through Phone Link')
+            return responses.say_calling(who, lang)
         if pending.get('kind') == 'email':
             import mail
             draft = pending['draft']

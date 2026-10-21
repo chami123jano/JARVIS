@@ -163,23 +163,26 @@ class MessageTests(unittest.TestCase):
         tree = ast.parse(source)
         writers = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
                    and ast.unparse(n.func) == 'pending.update']
-        self.assertEqual(len(writers), 2, 'two places put something up for a yes')
+        self.assertEqual(len(writers), 3, 'three places put something up for a yes')
         functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
 
         def inside(node, name):
             return any(f.name == name and any(c is node for c in ast.walk(f)) for f in functions)
-        whatsapp = [w for w in writers if not inside(w, 'do_reply_email')]
-        self.assertEqual(len(whatsapp), 1, 'one of them is the email reply')
+        # The email reply (Day 9) and the call (Day 8), each reached only from the router's
+        # own command, i.e. from your voice.
+        handlers = {'do_reply_email': 'reply_email', 'do_call': 'call'}
+        whatsapp = [w for w in writers if not any(inside(w, h) for h in handlers)]
+        self.assertEqual(len(whatsapp), 1, 'two of them are the reply and the call')
         enclosing = [n for n in ast.walk(tree) if isinstance(n, ast.If)
                      and any(c is whatsapp[0] for c in ast.walk(n))]
         self.assertTrue(any("'send_message'" in ast.unparse(n.test) for n in enclosing),
                         'the other is the spoken send_message command')
-        # The reply is reached only from the router's reply_email, i.e. from your voice.
-        uses = [n for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == 'do_reply_email']
-        self.assertEqual(len(uses), 1, 'named once: in MAIL, keyed by the spoken command')
         mail_table = next(n for n in ast.walk(tree) if isinstance(n, ast.Assign)
                           and ast.unparse(n.targets[0]) == 'MAIL')
-        self.assertIn("'reply_email': do_reply_email", ast.unparse(mail_table.value))
+        for handler, command in handlers.items():
+            uses = [n for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == handler]
+            self.assertEqual(len(uses), 1, f'{handler} named once: in MAIL')
+            self.assertIn(f"'{command}': {handler}", ast.unparse(mail_table.value))
 
 
 class WebTests(unittest.TestCase):

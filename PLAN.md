@@ -818,6 +818,28 @@ place UI Automation is still needed, and now only as a rare second resort.
 
 ---
 
+#### Day 8, for an iPhone — calls through Phone Link (live test pending)
+
+The plan assumed Android. On an iPhone, KDE Connect can do none of Day 8 -- Apple lets no
+app send an SMS, place a call or read notifications -- so `phone.py` goes through
+Microsoft's **Phone Link**, paired with the iPhone over Bluetooth on 21 Oct, and set as the
+default app for TEL links (it had been Skype for Business).
+
+  - **"අම්මාට call එකක් ගන්න"** or **"0771234567ට call කරන්න"**: the contact or the number
+    said, read back ("අම්මාට call කරනවා, 077 123 4567. කරන්නද?"), dialled through the
+    iPhone only on "ඔව්" from your voice -- the tier-2 path WhatsApp and email use.
+  - **"මගේ phone එක කොහෙද"**: Apple's Find My opens; you press Play Sound. No program may
+    ring an iPhone.
+  - **iPhone notifications**: Phone Link shows them as Windows notifications, which Day 7b
+    already reads -- allowed by name, codes never read out. Waiting on a real one to learn
+    the name it arrives under.
+  - **SMS: not built.** Phone Link gives a program no way to send one; WhatsApp by voice
+    (Day 7) covers messages.
+
+Found: the new call command tied with the reminder on "පැය දෙකකින් අම්මාට කෝල් කරන්න මතක්
+කරන්න" -- asking to be reminded to call. When a sentence says මතක් (remind), the reminder
+wins now. JARVIS has no contacts saved yet; numbers said aloud work meanwhile.
+
 ### Day 8 — The phone bridge
 
 **Goal:** JARVIS places calls, sends SMS, and reads your phone notifications.

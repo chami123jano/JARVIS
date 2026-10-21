@@ -841,6 +841,26 @@ def say_agenda_not_set_up(lang='si'):
             else 'Calendar එක තාම සම්බන්ධ කරලා නෑ.')
 
 
+def say_calling(who, lang='si'):
+    return (f'Calling {who} on your iPhone.' if lang == 'en'
+            else f'{who}ට iPhone එකෙන් call කරනවා.')
+
+
+def say_who_to_call(lang='si'):
+    return ('Who should I call? Say a name from your contacts, or the number.' if lang == 'en'
+            else 'කාටද call කරන්නේ? contacts වල නමක් හරි number එක හරි කියන්න.')
+
+
+def say_find_phone(lang='si'):
+    return ('Find My is open. Choose your iPhone and press Play Sound.' if lang == 'en'
+            else 'Find My එක open කළා. iPhone එක තෝරලා Play Sound ඔබන්න.')
+
+
+def say_phone_failed(lang='si'):
+    return ('Phone Link did not open the call.' if lang == 'en'
+            else 'Phone Link එකෙන් call එක ගන්න බැරි වුණා.')
+
+
 def say_mail_not_set_up(lang='si'):
     return ('Email is not set up yet. Run mail.py --setup.' if lang == 'en'
             else 'ඊමේල් තාම set up කරලා නෑ.')

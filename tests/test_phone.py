@@ -41,14 +41,12 @@ class NumberTests(unittest.TestCase):
         """Measured 21 Oct: Phone Link showed "+94 71 150 8512" one time, "077 311 8512"
         the next, and the first check refused the second."""
         from unittest.mock import MagicMock
-        with patch('subprocess.run', return_value=MagicMock(stdout='pressed
-')) as run:
+        with patch('subprocess.run', return_value=MagicMock(stdout='pressed\n')) as run:
             self.assertTrue(phone.press_call('94773118512'))
         script = run.call_args.args[0][-1]
         self.assertIn('-Digits 94773118512 -Local 0773118512', script)
         self.assertIn("$shown -eq $Digits -or ($Local -and $shown -eq $Local)", phone.PRESS_CALL)
-        with patch('subprocess.run', return_value=MagicMock(stdout='not found
-')):
+        with patch('subprocess.run', return_value=MagicMock(stdout='not found\n')):
             self.assertFalse(phone.press_call('94773118512'))
 
     def test_a_call_is_tier_two(self):

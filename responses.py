@@ -846,6 +846,14 @@ def say_calling(who, lang='si'):
             else f'{who}ට iPhone එකෙන් call කරනවා.')
 
 
+def say_iphone_not_connected(lang='si'):
+    """Phone Link pressed Call but had no iPhone to hand it to (measured 21 Oct)."""
+    return ('Phone Link cannot find your iPhone, so nothing was dialled. Open Link to '
+            'Windows on the iPhone and try again.' if lang == 'en' else
+            'Phone Link එකට iPhone එක හම්බවෙන්නේ නෑ, ඒ නිසා call එක ගියේ නෑ. iPhone එකේ '
+            'Link to Windows app එක open කරලා ආයෙත් කියන්න.')
+
+
 def say_press_call(who, lang='si'):
     return (f"{who}'s number is in Phone Link. Press Call there." if lang == 'en'
             else f'{who}ගේ number එක Phone Link එකේ දැම්මා. Call ඔබන්න.')

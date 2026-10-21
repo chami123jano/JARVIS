@@ -1543,6 +1543,8 @@ def build_brain(args):
                 placed = phone.call(detail['number'])
             except phone.PhoneError as error:
                 permissions.log(store, action, detail, f'failed: {error}')
+                if 'find the iPhone' in str(error):
+                    return responses.say_iphone_not_connected(lang)
                 return responses.say_phone_failed(lang)
             if not placed.get('pressed'):
                 permissions.log(store, action, detail, 'number filled in Phone Link, not pressed')

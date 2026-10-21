@@ -48,6 +48,9 @@ class NumberTests(unittest.TestCase):
         self.assertIn("$shown -eq $Digits -or ($Local -and $shown -eq $Local)", phone.PRESS_CALL)
         with patch('subprocess.run', return_value=MagicMock(stdout='not found\n')):
             self.assertFalse(phone.press_call('94773118512'))
+        with patch('subprocess.run', return_value=MagicMock(stdout='no iphone\n')):
+            with self.assertRaises(phone.PhoneError):
+                phone.press_call('94773118512')
 
     def test_a_call_is_tier_two(self):
         self.assertEqual(permissions.tier('call'), permissions.OUTWARD)
@@ -115,6 +118,14 @@ class ConversationTests(unittest.TestCase):
         with patch.object(phone, 'press_call', return_value=False):
             said = self.respond('ඔව්', speak=False)
         self.assertEqual(said, responses.say_press_call('අම්මා', 'si'))
+
+    def test_no_iphone_is_said_not_called_a_call(self):
+        """Measured 21 Oct: Call pressed, Phone Link answered "Couldn't find your iPhone"."""
+        self.respond('අම්මාට call එකක් ගන්න', speak=False)
+        with patch.object(phone, 'press_call',
+                          side_effect=phone.PhoneError('Phone Link could not find the iPhone')):
+            said = self.respond('ඔව්', speak=False)
+        self.assertEqual(said, responses.say_iphone_not_connected('si'))
 
     def test_no_dials_nothing(self):
         self.respond('අම්මාට call එකක් ගන්න', speak=False)

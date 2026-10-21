@@ -69,6 +69,25 @@ while ((Get-Date) -lt $deadline) {
     if ($button -and ($shown -eq $Digits -or ($Local -and $shown -eq $Local))) {
       if ($DryRun) { 'found'; exit 0 }
       $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+      # Pressed is not placed: measured 21 Oct, Phone Link answered "Couldn't find your
+      # iPhone" in a window of its own. Watch for it for a few seconds.
+      $watch = (Get-Date).AddSeconds(6)
+      $text = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Text)
+      while ((Get-Date) -lt $watch) {
+        $desktop = [System.Windows.Automation.AutomationElement]::RootElement
+        $pid_ = New-Object System.Windows.Automation.PropertyCondition(
+          [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)
+        foreach ($window in $desktop.FindAll([System.Windows.Automation.TreeScope]::Children, $pid_)) {
+          foreach ($t in $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $text)) {
+            if ($t.Current.Name -match "find your iPhone|not connected|connect your iPhone") {
+              'no iphone'; exit 0
+            }
+          }
+        }
+        Start-Sleep -Milliseconds 500
+      }
       'pressed'; exit 0
     }
   }
@@ -91,11 +110,14 @@ def press_call(digits, dry_run=False):
                f'& {{{PRESS_CALL}}} -Digits {digits}' + (f' -Local {local}' if local else '')
                + (' -DryRun' if dry_run else '')]
     try:
-        done = subprocess.run(command, capture_output=True, text=True, timeout=20,
+        done = subprocess.run(command, capture_output=True, text=True, timeout=30,
                               creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     except (OSError, subprocess.TimeoutExpired):
         return False
-    return done.stdout.strip().splitlines()[-1:] == ['found' if dry_run else 'pressed']
+    said = done.stdout.strip().splitlines()[-1:]
+    if said == ['no iphone']:
+        raise PhoneError('Phone Link could not find the iPhone')
+    return said == ['found' if dry_run else 'pressed']
 
 
 def call(digits):

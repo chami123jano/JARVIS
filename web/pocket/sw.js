@@ -1,7 +1,7 @@
 // The page itself works without the laptop (it says the laptop is unreachable); every
 // question goes to the laptop or nowhere -- nothing is queued and sent later on its own.
 'use strict';
-const SHELL = 'jarvis-pocket-v1';
+const SHELL = 'jarvis-pocket-v2';
 const FILES = ['/', '/app.js', '/manifest.webmanifest', '/icon.png'];
 
 self.addEventListener('install', (event) => {

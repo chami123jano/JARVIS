@@ -341,6 +341,25 @@ class WhisperMemoryTests(unittest.TestCase):
         self.assertNotIn('preload', inspect.getsource(voice_loop.wake_loop))
 
 
+class NoteWordsTests(unittest.TestCase):
+    """Measured 5 Nov, from the phone: a question about a note, and a request to delete all
+    notes, were each saved as a new note."""
+
+    def test_a_question_or_a_delete_is_not_a_note(self):
+        import router
+        for text in ('මේ සටහන කිහේද ද තියෙන්නේ', 'සියලු සටහන් මකා දමන්න', 'note ekak delete karanna'):
+            with self.subTest(text=text):
+                self.assertNotEqual(router.route(text)['action'], 'command')
+
+    def test_real_notes_are_still_saved(self):
+        import router
+        for text, content in (('සටහනක් සේව් කරන්න බඩු ගන්න', 'බඩු ගන්න'),
+                              ('take a note buy bread', 'buy bread')):
+            with self.subTest(text=text):
+                decision = router.route(text)
+                self.assertEqual((decision['action'], decision['content']), ('command', content))
+
+
 class NameClashTests(unittest.TestCase):
     def test_no_function_hides_one_of_its_modules_functions(self):
         """Twice now: `watcher = ...` in voice_loop (Day 16) and `speak = ...` in the

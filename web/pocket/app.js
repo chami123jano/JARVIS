@@ -93,13 +93,17 @@ $('ask').addEventListener('submit', async (event) => {
   }
 });
 
-// Hold to talk. Safari records AAC in MP4; the laptop decodes it.
+// Tap to talk, tap to send. Safari records AAC in MP4; the laptop decodes it. It was hold
+// to talk, and of several tries only one reached the laptop (5 Nov): a finger that moves a
+// little ends a hold, and a recording cut that short was dropped without a word.
 let recorder = null;
 let chunks = [];
 let stream = null;
+let started = 0;
+let ticking = null;
+const LONGEST = 30000;
 
-async function startTalking(event) {
-  event.preventDefault();
+async function startTalking() {
   unlock();
   if (recorder) return;
   try {
@@ -114,22 +118,33 @@ async function startTalking(event) {
   recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
   recorder.onstop = sendRecording;
   recorder.start();
+  started = Date.now();
   $('talk').classList.add('recording');
-  $('talk').textContent = 'Listening… let go to send';
+  const tick = () => {
+    const seconds = Math.floor((Date.now() - started) / 1000);
+    $('talk').textContent = `Listening… ${seconds}s — tap to send`;
+    if (Date.now() - started >= LONGEST) stopTalking();
+  };
+  tick();
+  ticking = setInterval(tick, 500);
 }
 
-function stopTalking(event) {
-  if (event) event.preventDefault();
+function stopTalking() {
   if (!recorder) return;
+  clearInterval(ticking);
   recorder.stop();
   $('talk').classList.remove('recording');
-  $('talk').textContent = 'Hold to talk';
+  $('talk').textContent = 'Tap to talk';
 }
 
 async function sendRecording() {
   const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/mp4' });
+  const length = Date.now() - started;
   recorder = null;
-  if (blob.size < 2000) return;        // a tap, not a sentence
+  if (length < 700 || blob.size < 2000) {
+    show('note', 'That was too short. Tap, say it, then tap again.');
+    return;
+  }
   $('talk').disabled = true;
   status('Hearing…', 'on');
   try {
@@ -142,11 +157,7 @@ async function sendRecording() {
   }
 }
 
-const talk = $('talk');
-talk.addEventListener('pointerdown', startTalking);
-talk.addEventListener('pointerup', stopTalking);
-talk.addEventListener('pointercancel', stopTalking);
-talk.addEventListener('pointerleave', stopTalking);
+$('talk').addEventListener('click', () => (recorder ? stopTalking() : startTalking()));
 
 $('pairbtn').addEventListener('click', async () => {
   unlock();
@@ -158,7 +169,7 @@ $('pairbtn').addEventListener('click', async () => {
     token = result.token;
     try { localStorage.setItem(TOKEN_KEY, token); } catch (e) { /* kept for this visit */ }
     paired(true);
-    show('note', `Paired as ${result.name}. Hold the button and talk, or type.`);
+    show('note', `Paired as ${result.name}. Tap the button, talk, and tap again -- or type.`);
     status('Connected', 'on');
   } catch (e) {
     $('pairmsg').textContent = e.message;

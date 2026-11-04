@@ -630,7 +630,15 @@ def without_delay(tokens):
 
 
 # Commands asked with "how much" (කීයද, kiyada) need their own word as well.
+# Asking to delete is never asking to save. Measured 5 Nov, from the phone: "සියලු සටහන්
+# මකා දමන්න" (delete all notes) saved a note reading "සියලු මකා දමන්න".
+DELETE_WORDS = re.compile(r'මකා|මකන්න|මකල|අයින් කර|delete|remove|erase|makanna|maka', re.I)
+
 OWN_WORDS = {
+    # "මේ සටහන කිහේද ද තියෙන්නේ" (where is this note?) was saved as a note, 5 Nov: the
+    # word for a note is not an order to write one.
+    'save_note': re.compile(r'සේව්|ලියන්න|ලියාගන්න|තබන්න|දාන්න|තියන්න|තියාගන්න|save|liyanna|'
+                           r'thabanna|danna|thiyanna|take a note|note down|write down', re.I),
     'time': re.compile(r'වෙලාව|වේලාව|දැන්|පැය|velav|vela|wela|welaw|time|dan\b|dang|deng|'
                        r'clock|hour', re.I),
     'battery': re.compile(r'බැටරි|batter|batari|bateri|baitari|charge|චාජ්|power', re.I),
@@ -672,6 +680,9 @@ def route(text):
         # "iPhone 16 එක කීයද?" matched the time at 0.69 and was told it was two o'clock,
         # and "galaxy s25 eka kiyada" was the battery or a new skill.
         result.update(action='model', reason=f'no word of {name} in it')
+        return result
+    if name == 'save_note' and DELETE_WORDS.search(text):
+        result.update(action='model', reason='asks to delete, not to save')
         return result
     if language == 'en' and score >= ACCEPT and not shares_a_word(text, name):
         result.update(action='model', reason='no word of the command in an English sentence')

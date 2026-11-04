@@ -165,7 +165,7 @@ class ServerTests(Folder):
     def test_the_page_is_served_over_tls(self):
         status, data = self.request('GET', '/')
         self.assertEqual(status, 200)
-        self.assertIn(b'Hold to talk', data)
+        self.assertIn(b'Tap to talk', data)
 
     def test_unpaired_is_refused(self):
         self.assertEqual(self.request('POST', '/api/ask', {'text': 'hi'})[0], 401)

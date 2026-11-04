@@ -106,8 +106,11 @@ const LONGEST = 30000;
 async function startTalking() {
   unlock();
   if (recorder) return;
+  // A fresh microphone every time. Measured 5 Nov: the first recording worked and every
+  // one after it came back empty -- once the page has played JARVIS's reply, iOS has moved
+  // the audio over to playback and the microphone it gave earlier is silent.
   try {
-    stream = stream || await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
     show('note', 'No microphone: allow it for this page in Settings, or type instead.');
     return;
@@ -117,7 +120,7 @@ async function startTalking() {
   recorder = new MediaRecorder(stream, type ? { mimeType: type } : {});
   recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
   recorder.onstop = sendRecording;
-  recorder.start();
+  recorder.start(1000);                // a piece every second, not one at the very end
   started = Date.now();
   $('talk').classList.add('recording');
   const tick = () => {
@@ -141,8 +144,17 @@ async function sendRecording() {
   const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/mp4' });
   const length = Date.now() - started;
   recorder = null;
-  if (length < 700 || blob.size < 2000) {
+  if (stream) {
+    stream.getTracks().forEach((track) => track.stop());   // the microphone is let go
+    stream = null;
+  }
+  if (length < 700) {
     show('note', 'That was too short. Tap, say it, then tap again.');
+    return;
+  }
+  if (blob.size < 2000) {
+    show('note', `The microphone gave no sound for those ${Math.round(length / 1000)}s. ` +
+                 'Tap and try again.');
     return;
   }
   $('talk').disabled = true;

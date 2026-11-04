@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JARVIS">
+<meta name="theme-color" content="#0b0f14">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon.png">
+<title>JARVIS</title>
+<style>
+  :root { --bg: #0b0f14; --panel: #131a22; --line: #223040; --text: #e6edf3; --dim: #8b9bb0;
+          --accent: #4fb3ff; --warn: #ff7a59; --ok: #3fd19b; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+               font: 17px/1.45 -apple-system, "Iskoola Pota", "Noto Sans Sinhala", sans-serif; }
+  body { display: flex; flex-direction: column; padding: env(safe-area-inset-top) 16px
+         calc(env(safe-area-inset-bottom) + 12px); }
+  header { display: flex; align-items: center; gap: 10px; padding: 14px 0 10px; }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: .08em; }
+  #dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); }
+  #dot.on { background: var(--ok); } #dot.off { background: var(--warn); }
+  #status { color: var(--dim); font-size: 14px; margin-left: auto; text-align: right; }
+  #log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 6px 0; }
+  .line { max-width: 88%; padding: 10px 13px; border-radius: 16px; white-space: pre-wrap; }
+  .you { align-self: flex-end; background: #1d3550; }
+  .jarvis { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+  .note { align-self: center; color: var(--dim); font-size: 14px; text-align: center; }
+  form { display: flex; gap: 8px; margin-top: 8px; }
+  input { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--panel);
+          border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; }
+  button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+           border-radius: 12px; padding: 11px 16px; }
+  #talk { display: block; width: 100%; margin-top: 10px; padding: 22px; font-size: 19px;
+          background: #12324d; border-color: #1f5b8c; user-select: none; -webkit-user-select: none;
+          touch-action: none; }
+  #talk.recording { background: var(--warn); border-color: var(--warn); }
+  #talk:disabled { opacity: .5; }
+  #pair { display: none; flex-direction: column; gap: 12px; margin-top: 30px; }
+  #pair p { color: var(--dim); margin: 0; }
+  .paired #pair { display: none; } .unpaired #pair { display: flex; }
+  .unpaired #main { display: none; }
+  #main { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+</style>
+</head>
+<body class="unpaired">
+<header><span id="dot"></span><h1>JARVIS</h1><span id="status"></span></header>
+
+<section id="pair">
+  <p>On the laptop run <b>pocket.py --pair</b>, then type the six-digit code here.</p>
+  <input id="code" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code">
+  <input id="name" maxlength="40" placeholder="Name for this phone" value="iPhone">
+  <button id="pairbtn">Pair</button>
+  <p id="pairmsg"></p>
+</section>
+
+<section id="main">
+  <div id="log"></div>
+  <form id="ask"><input id="text" placeholder="Type to JARVIS…" autocomplete="off">
+    <button type="submit">Send</button></form>
+  <button id="talk">Hold to talk</button>
+</section>
+
+<audio id="voice" playsinline></audio>
+<script src="/app.js"></script>
+</body>
+</html>

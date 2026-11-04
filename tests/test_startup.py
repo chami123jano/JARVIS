@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import documents
 import mail
+import pocket
 import memory
 import notifications
 import presence
@@ -37,6 +38,8 @@ class StartupTests(unittest.TestCase):
             patch.object(notifications, 'Watcher', return_value=self.watcher),
             # Day 9: the inbox watcher would reach the real Gmail from a test.
             patch.object(mail.Watcher, 'start', record('mail')),
+            # Day 25: the phone door would listen on the home network from a test.
+            patch.object(pocket.Pocket, 'keep_in_step', record('pocket')),
         ]
         for p in self.patches:
             p.start()
@@ -68,7 +71,7 @@ class StartupTests(unittest.TestCase):
 
     def test_start_watching_starts_everything(self):
         self.start_watching()
-        for name in ('presence', 'routines', 'files', 'memory', 'mail'):
+        for name in ('presence', 'routines', 'files', 'memory', 'mail', 'pocket'):
             self.assertIn(name, self.started)
 
     def test_a_message_while_here_is_said_and_while_away_is_kept(self):

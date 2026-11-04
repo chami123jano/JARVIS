@@ -1652,6 +1652,31 @@ assumed. Found that way:
 
 ---
 
+#### Day 25 built — JARVIS on your iPhone (phone setup pending)
+
+`pocket.py` and `web/pocket/`: a home-screen app on the iPhone. Hold the button and talk, or
+type; the laptop hears (Google, as the microphone does), thinks with the same brain, and the
+reply is played on the phone -- Sinhala by the offline voice, English by Windows'.
+
+  - **Off unless switched on** (`pocket.py --on` / `--off`); off, every request is refused
+    within five seconds, paired phones included. Home network addresses only.
+  - **Paired phones only**: a six-digit code from `pocket.py --pair`, ten minutes, five
+    tries; the phone then holds a long secret, kept here only as a hash. `--forget NAME`.
+  - **https**, because an iPhone gives a page the microphone only over it: JARVIS has its own
+    certificate authority, limited by name constraints to private addresses and `.local`,
+    so trusting it on the phone vouches for no real website. Server certificate 397 days
+    (the iPhone maximum), renewed by itself when the laptop's address changes.
+  - The phone counts as you, like the console; anything sent in your name is still read
+    back and waits for "ඔව්". Nothing is queued and sent later on its own when the laptop
+    is unreachable -- the page says so, and the typed text stays to send again.
+
+Measured live on 192.168.1.3 (5 Nov): strict TLS verification passed, pairing, a question
+answered in 3.5 s, the reply 3.5 s of speech. Not yet from the iPhone itself: the network is
+marked Public, which blocks it, and the certificate must be installed on the phone.
+
+Locked laptop: answers work; anything that needs the screen does not -- WhatsApp sends by
+pressing Enter in WhatsApp Desktop, which cannot happen on a locked screen.
+
 ### Day 25 — JARVIS in your pocket
 
 **Goal:** talk to it from anywhere in the house.

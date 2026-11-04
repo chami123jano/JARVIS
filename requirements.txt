@@ -57,3 +57,6 @@ playwright>=1.64,<2
 # The calendar (Day 9): Google Calendar's secret iCal address, recurring events expanded.
 icalendar>=6,<7
 recurring-ical-events>=3,<4
+
+# Phones (Day 25): the certificate for https, so an iPhone gives the page its microphone.
+cryptography>=46,<48

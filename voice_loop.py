@@ -1302,6 +1302,17 @@ def build_brain(args):
         # Your inbox, looked at every three minutes, so "ඊමේල් බලන්න" is answered at once.
         import mail
         mail.WATCHER.start()
+        # Day 25: paired phones, while switched on (pocket.py --on / --off). The same
+        # brain; the reply is played on the phone, not said in an empty room.
+        import pocket
+        phone_ears = {}
+
+        def phone_transcribe(audio):
+            if 'ears' not in phone_ears:
+                phone_ears['ears'] = Hearing(args.stt, args.model, args.whisper_device)
+            return phone_ears['ears'].transcribe(audio, None)
+        pocket.Pocket(answer=lambda text: answer_typed(text, speak=False),
+                      transcribe=phone_transcribe).keep_in_step()
         # Index anything saved while JARVIS was off, so it can be found by meaning.
         agent.memory.reindex_in_background()
         # Your files under D:\me (Day 13): only what changed is read, every ten minutes.

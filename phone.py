@@ -56,44 +56,119 @@ def speakable_number(digits):
 # pressed only when that is exactly the number you said yes to.
 PRESS_CALL = r'''
 param([string]$Digits, [string]$Local = '', [switch]$DryRun)
+Add-Type @"
+using System; using System.Runtime.InteropServices;
+public class PL {
+ [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr v);
+ [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+ [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+ [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, IntPtr e);
+ [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+ [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
+ [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, IntPtr e);
+ [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
+ [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint f);
+ [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+ public struct POINT { public int X, Y; }
+}
+"@
+# Real screen pixels, as UI Automation reports them. Without this, display scaling moved
+# the click elsewhere (measured 5 Nov: the window measured 922x531 instead of 1152x664).
+[PL]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
-$deadline = (Get-Date).AddSeconds(8)
-while ((Get-Date) -lt $deadline) {
+$A = [System.Windows.Automation.AutomationElement]
+
+function Matching {
   foreach ($p in Get-Process PhoneExperienceHost -ErrorAction SilentlyContinue) {
     if ($p.MainWindowHandle -eq 0) { continue }
-    $root = [System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
-    $id = New-Object System.Windows.Automation.PropertyCondition(
-      [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'ButtonCall')
-    $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $id)
+    $id = New-Object System.Windows.Automation.PropertyCondition($A::AutomationIdProperty, 'ButtonCall')
+    $button = $A::FromHandle($p.MainWindowHandle).FindFirst(
+      [System.Windows.Automation.TreeScope]::Descendants, $id)
+    if (-not $button) { continue }
     $shown = $button.Current.Name -replace '\D', ''
-    if ($button -and ($shown -eq $Digits -or ($Local -and $shown -eq $Local))) {
-      if ($DryRun) { 'found'; exit 0 }
-      $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-      # Pressed is not placed: measured 21 Oct, Phone Link answered "Couldn't find your
-      # iPhone" in a window of its own. Watch for it for a few seconds.
-      $watch = (Get-Date).AddSeconds(6)
-      $text = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::Text)
-      while ((Get-Date) -lt $watch) {
-        $desktop = [System.Windows.Automation.AutomationElement]::RootElement
-        $pid_ = New-Object System.Windows.Automation.PropertyCondition(
-          [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)
-        foreach ($window in $desktop.FindAll([System.Windows.Automation.TreeScope]::Children, $pid_)) {
-          foreach ($t in $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $text)) {
-            if ($t.Current.Name -match "find your iPhone|not connected|connect your iPhone|need permission to sync|almost there") {
-              'no iphone'; exit 0
-            }
-          }
-        }
-        Start-Sleep -Milliseconds 500
+    if ($shown -eq $Digits -or ($Local -and $shown -eq $Local)) { return @($p, $button) }
+  }
+  return $null
+}
+
+function Outcome($p) {
+  # "no iphone" if Phone Link said it has none; "placed" once the dial pad clears -- what a
+  # call that really started looked like (5 Nov); "" while neither has happened.
+  $text = New-Object System.Windows.Automation.PropertyCondition(
+    $A::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)
+  $mine = New-Object System.Windows.Automation.PropertyCondition($A::ProcessIdProperty, $p.Id)
+  foreach ($window in $A::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $mine)) {
+    foreach ($t in $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $text)) {
+      if ($t.Current.Name -match "find your iPhone|not connected|connect your iPhone|need permission to sync|almost there") {
+        return 'no iphone'
       }
-      'pressed'; exit 0
     }
   }
+  if (-not (Matching)) { return 'placed' }
+  return ''
+}
+
+function Wait-Outcome($p, $seconds) {
+  $until = (Get-Date).AddSeconds($seconds)
+  while ((Get-Date) -lt $until) {
+    $now = Outcome $p
+    if ($now) { return $now }
+    Start-Sleep -Milliseconds 400
+  }
+  return ''
+}
+
+function To-Front($p) {
+  # Phone Link dials only from its window in front: pressed in the background, nothing
+  # happened (21 Oct, 5 Nov). A tap of Alt lets this process bring it forward.
+  [PL]::ShowWindow($p.MainWindowHandle, 9) | Out-Null
+  [PL]::keybd_event(0x12, 0, 0, [IntPtr]::Zero); [PL]::keybd_event(0x12, 0, 2, [IntPtr]::Zero)
+  [PL]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
   Start-Sleep -Milliseconds 400
 }
-'not found'
+
+function Aim($p, $button) {
+  # The centre of the button -- its own position, in real pixels -- if Phone Link is in
+  # front and its own window is what lies under that point. (Asking what element is at
+  # the point does not work here: WinUI answers with its outer container, 5 Nov.)
+  $r = $button.Current.BoundingRectangle
+  if ($button.Current.IsOffscreen -or $r.Width -lt 10) { return $null }
+  $x = [int]($r.X + $r.Width / 2); $y = [int]($r.Y + $r.Height / 2)
+  $point = New-Object PL+POINT; $point.X = $x; $point.Y = $y
+  $under = [PL]::GetAncestor([PL]::WindowFromPoint($point), 2)
+  if ([PL]::GetForegroundWindow() -eq $p.MainWindowHandle -and $under -eq $p.MainWindowHandle) {
+    return @($x, $y)
+  }
+  return $null
+}
+
+$deadline = (Get-Date).AddSeconds(8)
+$found = $null
+while (-not $found -and (Get-Date) -lt $deadline) { $found = Matching; if (-not $found) { Start-Sleep -Milliseconds 400 } }
+if (-not $found) { 'not found'; exit 0 }
+$p, $button = $found
+To-Front $p
+if ($DryRun) { if (Aim $p $button) { 'found' } else { 'found, aim off' }; exit 0 }
+
+$button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+$now = Wait-Outcome $p 4
+if ($now -eq 'no iphone') { 'no iphone'; exit 0 }
+if ($now -eq 'placed') { 'pressed'; exit 0 }
+
+# The press did not take: click it, as a person would -- only the confirmed number's button.
+$found = Matching
+if (-not $found) { 'pressed'; exit 0 }
+$p, $button = $found
+To-Front $p
+$at = Aim $p $button
+if (-not $at) { 'not placed'; exit 0 }
+$old = New-Object PL+POINT; [PL]::GetCursorPos([ref]$old) | Out-Null
+[PL]::SetCursorPos($at[0], $at[1]) | Out-Null; Start-Sleep -Milliseconds 120
+[PL]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 80
+[PL]::mouse_event(0x0004, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 200
+[PL]::SetCursorPos($old.X, $old.Y) | Out-Null
+$now = Wait-Outcome $p 6
+if ($now -eq 'no iphone') { 'no iphone' } elseif ($now -eq 'placed') { 'pressed' } else { 'not placed' }
 '''
 
 

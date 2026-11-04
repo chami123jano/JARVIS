@@ -60,3 +60,6 @@ recurring-ical-events>=3,<4
 
 # Phones (Day 25): the certificate for https, so an iPhone gives the page its microphone.
 cryptography>=46,<48
+
+# See and click (Day 18): the windows' own buttons and fields, through UI Automation.
+uiautomation>=2.0.20,<3

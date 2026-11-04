@@ -1383,6 +1383,38 @@ def build_brain(args):
         mailbox.update(messages=found, current=found[0] if found else None)
         return reply
 
+    def do_operate(decision, lang):
+        """Day 18: press buttons in a program that has no API, looking after every step.
+        Your voice only; anything irreversible waits for "ඔව්"."""
+        import hands
+        import live
+        if not may_act_outward():
+            return responses.say_not_owner(lang)
+        text = decision['text']
+        named = re.match(r'^\s*(.+?)\s+(?:එකේ|eke|ekē)\s', text) or \
+            re.search(r'\b(?:in|on)\s+(?:the\s+)?([a-z][\w ]{1,30}?)\s+(?:press|click|app)\b', text, re.I)
+        app = named.group(1).strip() if named else None
+
+        def report(line):
+            print(f'  hands: {line}', flush=True)
+            live.LIVE.said(f'… {line}')
+        task = hands.Task(hands.goal_of(text, app), app, report=report, lang=lang)
+        return operate_outcome(task, task.run, lang)
+
+    def operate_outcome(task, step, lang):
+        import hands
+        try:
+            outcome = step()
+        except hands.HandsError as error:
+            print(f'  hands: {error}', file=sys.stderr)
+            return responses.say_hands_failed(str(error), lang)
+        print(f'  hands: {outcome} after {task.actions} actions', flush=True)
+        if outcome == 'confirm':
+            pending.clear()
+            pending.update(kind='click', task=task, language=lang)
+            return permissions.describe('click', {'button': task.waiting}, lang)
+        return task.result
+
     def do_call(decision, lang):
         """Day 8: a call through the iPhone (Phone Link). Read back; placed only on a yes."""
         import phone
@@ -1537,7 +1569,8 @@ def build_brain(args):
     # said is interpreted as an answer to the question just asked.
     pending = {}
     MAIL = {'email': do_email, 'read_email': do_read_email, 'reply_email': do_reply_email,
-            'agenda': do_agenda, 'call': do_call, 'find_phone': do_find_phone}
+            'agenda': do_agenda, 'call': do_call, 'find_phone': do_find_phone,
+            'operate': do_operate}
 
     def pending_detail():
         """What is waiting for a yes, as it goes into the log of outward actions."""
@@ -1545,6 +1578,8 @@ def build_brain(args):
             return 'call', {'to': pending['who'], 'number': pending['number']}
         if pending.get('kind') == 'undo_note':
             return 'undo_note', {'title': pending['note']['title']}
+        if pending.get('kind') == 'click':
+            return 'click', {'button': pending['task'].waiting, 'task': pending['task'].goal}
         if pending.get('kind') == 'email':
             draft = pending['draft']
             return 'send_email', {'to': draft['to'], 'subject': draft['subject'],
@@ -1553,6 +1588,11 @@ def build_brain(args):
 
     def send_pending(lang):
         """Carry out the message that was just confirmed."""
+        if pending.get('kind') == 'click':
+            task = pending['task']
+            permissions.log(store, *pending_detail(), 'confirmed')
+            pending.clear()
+            return operate_outcome(task, task.confirm, lang)
         if pending.get('kind') == 'undo_note':
             note = pending['note']
             pending.clear()
@@ -1691,11 +1731,12 @@ def build_brain(args):
                     speech.SPEAKER.say(reply)
                 return reply
             if permissions.is_no(text):
-                undo = pending.get('kind') == 'undo_note'
+                kind = pending.get('kind')
                 permissions.log(store, *pending_detail(), 'cancelled')
                 pending.clear()
-                reply = ('Kept.' if undo else 'Cancelled.') if lang == 'en' else \
-                    ('හරි, තියාගත්තා.' if undo else 'හරි, යැව්වේ නෑ.')
+                reply = {'undo_note': ('Kept.', 'හරි, තියාගත්තා.'),
+                         'click': ('All right, I will not press it.', 'හරි, ඔබන්නේ නෑ.')}.get(
+                    kind, ('Cancelled.', 'හරි, යැව්වේ නෑ.'))[0 if lang == 'en' else 1]
                 print(f'  JARVIS: {reply}', flush=True)
                 if speak:
                     speech.SPEAKER.say(reply)
@@ -1703,6 +1744,7 @@ def build_brain(args):
             # Neither: ask once more rather than guessing at a message to a person.
             reply = ('Yes or no?' if lang == 'en' else
                      'අයින් කරන්නද, නැද්ද?' if pending.get('kind') == 'undo_note' else
+                     'ඔබන්නද, නැද්ද?' if pending.get('kind') == 'click' else
                      'යවන්නද, නැද්ද?')
             print(f'  JARVIS: {reply}', flush=True)
             if speak:

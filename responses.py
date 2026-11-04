@@ -893,6 +893,13 @@ def say_mail_failed(reason, lang='si'):
             else 'ඊමේල් එක කරන්න බැරි වුණා.')
 
 
+def say_hands_failed(reason, lang='si'):
+    """Day 18: pressing buttons in a program did not get going."""
+    if lang == 'en':
+        return f'I could not do that: {reason}.'
+    return f'ඒක කරන්න බැරි වුණා: {reason}.'
+
+
 def say_offer_undo_note(title, lang='si'):
     """Day 30: right after a note was saved, "ඒක නෙවේ" most likely means it should not
     have been."""

@@ -34,6 +34,8 @@ TIERS = {
     # Tier 2: leaves the machine, in the user's name.
     'send_message': OUTWARD, 'send_sms': OUTWARD, 'call': OUTWARD,
     'send_email': OUTWARD, 'whatsapp_send': OUTWARD,
+    # Day 18: pressing a button that cannot be taken back (Send, Delete, Buy, Install...).
+    'click': OUTWARD,
     # Tier 3: cannot be undone.
     'delete_file': FINAL, 'shutdown': FINAL, 'purchase': FINAL, 'lock_pc': LOCAL,
 }
@@ -110,6 +112,12 @@ def describe(action, detail, lang='si'):
             return f'Sending to {who}: "{what}". Shall I?'
         # The dative attaches to the name, so "අම්මාට", not "අම්මා ට".
         return f'{who}ට යවනවා: "{what}". යවන්නද?'
+    if action == 'click':
+        # Day 18: a button that cannot be taken back, named, before a yes.
+        button = detail.get('button', '?')
+        if lang == 'en':
+            return f'The next step is to press "{button}". Shall I?'
+        return f'ඊළඟට "{button}" ඔබන්න ඕනේ. ඔබන්නද?'
     if action == 'call':
         # Day 8: who, and the number it will dial, before a yes.
         who, number = detail.get('to', '?'), detail.get('number', '')

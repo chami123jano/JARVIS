@@ -1344,6 +1344,34 @@ person asking it to send a message.
 
 ---
 
+#### ✅ Day 18 complete — it operates a program by looking at it
+
+`hands.py`: "calculator එකේ 12 + 30 ඔබන්න" opens Calculator, presses Clear entry, One, Two,
+Plus, Three, Zero, Equals, reads the display, and says "හරි, කළා. දැන් පෙන්නන්නේ 42."
+
+  - **It sees through Windows' accessibility interface**, not pixels: the window's real
+    buttons and fields, by name. The fast model plans every step at once *by name* -- told
+    to say first in words what a person would press -- and JARVIS carries it out.
+  - **It acts the way that worked on Phone Link** (Day 8): the window brought forward, the
+    control pressed through its own interface; the mouse, in real pixels, only for a
+    control that offers none.
+  - **It looks after every step**; at the end the model works out what the window should
+    show and compares -- and the numbers decide, in code, not its word.
+  - **Limits**: ten actions; one follow-up plan at most; a second plan never repeats what is
+    done; anything irreversible (Send, Delete, Buy, Install, Sign out...) waits for "ඔව්";
+    never types into a password or code field; never works in a password manager or bank.
+
+Measured on the way (5 Nov), each found by running it for real:
+  - Step by step, the model pressed 7, 8, then Multiply by four times. Planned at once by
+    name, quick mode: 18 of 18 plans exactly right in 6 s; thinking mode 6 of 18 in 50 s.
+  - A press that changed nothing on screen (the second Nine of 9 x 9 shows 9 again) was
+    taken as missed and clicked again: 9 x 99 = 891. An accepted press now counts.
+  - The list of controls was cut at 90 and lost "Three"; a re-plan after a finished task
+    started over (7 x 88 = 616); "7 x 8" was planned without Equals; the whole Sinhala
+    sentence made 64 / 8 lose its Four; the check called 246 right for 12 + 30. Each fixed.
+  - Six sums twice in a row: 12 of 12 right, 14-24 s each. Through JARVIS in Sinhala, four in
+    a row with nothing cleared between: 4 of 4, Clear entry pressed first by itself.
+
 ### Day 18 — See and click
 
 **Goal:** it operates programs that have no API, by looking at them.

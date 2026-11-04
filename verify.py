@@ -866,13 +866,32 @@ def reads_calendar():
                   f'{time.monotonic() - started:.0f}s -- titles not shown')
 
 
+@check('day 18', 'See and click: 7 x 8 in Calculator')
+def sees_and_clicks():
+    import hands
+    started = time.monotonic()
+    window = hands.window_for('calculator')
+    seen, handles = hands.look(window)
+    _, clear = hands.find(seen, handles, 'Clear')
+    if clear is None:
+        return FAIL, 'no Clear button seen in Calculator'
+    hands.press(window, clear)
+    task = hands.Task('7 x 8', 'calculator', report=lambda line: None)
+    outcome = task.run()
+    shown = [t for t in hands.look(window)[0]['texts'] if t.startswith('Display is')]
+    if not shown or not shown[0].endswith('56'):
+        return FAIL, f'{outcome} after {task.actions} actions, the display shows {shown}'
+    return PASS, (f'{task.actions} presses, the display reads 56, '
+                  f'{time.monotonic() - started:.0f}s')
+
+
 ORDER = [ollama_version, models_present, gpu, unit_tests, server_endpoints,
          multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
          google_stt, whisper_loads, vad_check, transcribe_clips, command_accuracy,
          noise_rejected, tts_sinhala, tts_cache, tts_routing, tts_interrupt, tts_offline,
          wake_word, echo_guard,
          routing, routing_safety, saving, spoken_numbers,
-         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, the_face, offline_sinhala, hardened, always_on, reads_the_web, reads_email, reads_calendar]
+         live_knowledge, knowledge_offline, notification_listener, speaks_first, multi_step, self_extending, sees_screen, deep_think, knows_files, remembers, plays_music, knows_presence, knows_voice, the_face, offline_sinhala, hardened, always_on, reads_the_web, reads_email, reads_calendar, sees_and_clicks]
 
 QUICK_SKIP = {multi_tool, streaming, thinking_gate, sinhala_reply, deep_fallback,
               transcribe_clips}

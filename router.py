@@ -95,6 +95,12 @@ COMMANDS = {
         'email balanna', 'email eka balanna', 'mail balanna', 'check my email',
         'mokakda email awe', 'any new email',
     ],
+    # Day 18: operate a program by looking at it -- "calculator එකේ 7 x 8 ඔබන්න".
+    'operate': [
+        'calculator එකේ ඔබන්න', 'ක්ලික් කරන්න', 'බොත්තම ඔබන්න', 'එකේ ක්ලික් කරන්න',
+        'click karanna', 'eke click karanna', 'button eka obanna', 'click on the button',
+        'press the button',
+    ],
     # Day 8: a call through the iPhone (Phone Link), and finding the phone.
     'call': [
         'අම්මාට call එකක් ගන්න', 'call එකක් ගන්න', 'කෝල් එකක් ගන්න', 'call කරන්න',
@@ -243,6 +249,7 @@ KEYWORDS = {
     # A reply carries a whole dictated message, so it sounds like no phrasing at all.
     'reply_email': ['reply', 'රිප්ලයි'],
     'call': ['call', 'කෝල්', 'kol'],
+    'operate': ['click', 'ක්ලික්', 'ඔබන්න', 'obanna', 'press'],
     'email': ['email', 'emails', 'ඊමේල්', 'mail'],
 }
 KEYWORD_FLOOR = .78
@@ -664,6 +671,11 @@ def route(text):
     music = music_intent(text)
     if music:
         name, score, second, second_score = music, 1.0, name, 0.0
+    elif 'operate' in (name, second) and has_keyword(text, 'operate') and \
+            score - second_score < MARGIN:
+        # "calculator එකේ 7 x 8 ඔබන්න" sounds like "calculate"; the pressing word decides.
+        other = second if name == 'operate' else name
+        name, score, second, second_score = 'operate', max(score, KEYWORD_FLOOR), other, 0.0
     elif {name, second} & {'call', 'reply_email', 'email'} and \
             {name, second} <= {'call', 'reply_email', 'email', 'reminder'} and \
             has_keyword(text, 'reminder'):
@@ -776,6 +788,7 @@ CARD_TITLES = {
     'read_email': 'Read that email', 'reply_email': 'Reply to it',
     'agenda': "What's on today / tomorrow",
     'call': 'Call someone (iPhone)', 'find_phone': "Where's my phone",
+    'operate': 'Press buttons in an app',
     'screenshot': 'Screenshot', 'lock_pc': 'Lock the PC', 'calculate': 'Calculate',
     'capabilities': 'What can you do', 'read_messages': 'What messages came',
     'briefing': 'Briefing now, or set its time', 'look_screen': "What's on screen / this error",

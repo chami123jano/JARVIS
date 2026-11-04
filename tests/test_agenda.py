@@ -9,6 +9,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sandbox import private_root
 import agenda
 import responses
 import router
@@ -123,6 +125,7 @@ class SetupTests(unittest.TestCase):
 
 class VoiceTests(unittest.TestCase):
     def setUp(self):
+        private_root(self)        # never the real data/jarvis.db
         import documents
         import mail
         import memory

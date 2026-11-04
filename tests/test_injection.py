@@ -152,7 +152,8 @@ class MessageTests(unittest.TestCase):
                         if isinstance(node, ast.FunctionDef) and node.name == 'announce')
         calls = {ast.unparse(n.func) for n in ast.walk(announce) if isinstance(n, ast.Call)}
         for forbidden in ('respond', 'agent.start', 'send_pending', 'messaging.send',
-                          'command_router.route', 'do_reply_email', 'mail.send'):
+                          'command_router.route', 'do_reply_email', 'mail.send', 'do_call',
+                          'correction'):
             self.assertNotIn(forbidden, calls)
 
     def test_a_yes_after_a_message_sends_nothing(self):
@@ -163,16 +164,20 @@ class MessageTests(unittest.TestCase):
         tree = ast.parse(source)
         writers = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
                    and ast.unparse(n.func) == 'pending.update']
-        self.assertEqual(len(writers), 3, 'three places put something up for a yes')
+        self.assertEqual(len(writers), 4, 'four places put something up for a yes')
         functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
 
         def inside(node, name):
             return any(f.name == name and any(c is node for c in ast.walk(f)) for f in functions)
         # The email reply (Day 9) and the call (Day 8), each reached only from the router's
-        # own command, i.e. from your voice.
+        # own command, i.e. from your voice; and the undo of a note (Day 30), offered only
+        # after your own "ඒක නෙවේ".
         handlers = {'do_reply_email': 'reply_email', 'do_call': 'call'}
-        whatsapp = [w for w in writers if not any(inside(w, h) for h in handlers)]
-        self.assertEqual(len(whatsapp), 1, 'two of them are the reply and the call')
+        undo = [w for w in writers if inside(w, 'correction')]
+        self.assertEqual(len(undo), 1, 'one is the undo of a note just saved')
+        whatsapp = [w for w in writers if not any(inside(w, h) for h in handlers)
+                    and not inside(w, 'correction')]
+        self.assertEqual(len(whatsapp), 1, 'two more are the reply and the call')
         enclosing = [n for n in ast.walk(tree) if isinstance(n, ast.If)
                      and any(c is whatsapp[0] for c in ast.walk(n))]
         self.assertTrue(any("'send_message'" in ast.unparse(n.test) for n in enclosing),

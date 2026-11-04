@@ -8,6 +8,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sandbox import private_root
 import mail
 import permissions
 import responses
@@ -182,6 +184,7 @@ class ConversationTests(unittest.TestCase):
     """The real voice brain, Gmail replaced: check, reply, then yes or no."""
 
     def setUp(self):
+        private_root(self)        # never the real data/jarvis.db
         import documents
         import memory
         import notifications

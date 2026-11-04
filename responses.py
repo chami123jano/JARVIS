@@ -893,6 +893,19 @@ def say_mail_failed(reason, lang='si'):
             else 'ඊමේල් එක කරන්න බැරි වුණා.')
 
 
+def say_offer_undo_note(title, lang='si'):
+    """Day 30: right after a note was saved, "ඒක නෙවේ" most likely means it should not
+    have been."""
+    if lang == 'en':
+        return f'Sorry -- I saved "{title}" as a note. Shall I remove it?'
+    return f'සමාවෙන්න, මම "{title}" කියලා සටහනක් save කළා. ඒක අයින් කරන්නද?'
+
+
+def say_note_removed(title, lang='si'):
+    return (f'Removed the note "{title}".' if lang == 'en'
+            else f'හරි, "{title}" සටහන අයින් කළා.')
+
+
 def say_no_answer(lang='si'):
     """The model failed or timed out. Measured 16 Oct: "HTTPConnectionPool(host=
     '127.0.0.1', port=11434): Read timed out." was read aloud as the answer."""

@@ -13,6 +13,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sandbox import private_root
 import documents
 import mail
 import pocket
@@ -25,6 +27,7 @@ import voice_loop
 
 class StartupTests(unittest.TestCase):
     def setUp(self):
+        private_root(self)        # never the real data/jarvis.db
         self.started = []
         self.watcher = MagicMock()
         record = lambda name: (lambda *a, **k: self.started.append(name))

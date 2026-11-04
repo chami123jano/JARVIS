@@ -1929,6 +1929,26 @@ fallback "is understood". By the recogniser, none of it was.
 
 ---
 
+#### Day 30 (part 2) — personality from real use
+
+From the real history and the first phone conversation (5 Nov):
+
+  - **A friend, not a form.** Sinhala answers said ඔබ, "සිටිනවා", "මෙහෙයුම් සහකරුවෙක්";
+    greetings never used the name. Now: everyday spoken Sinhala with ඔයා; "හෙලෝ" and "hi"
+    greeted as "චමිදූ"; a poem given at once, not "which kind?"; rudeness met warmly.
+  - **Said to the question, never in the system prompt.** Measured: three sentences on
+    manner in the system prompt dropped "calculate, then save_note" from 6 saved in 6 to 3
+    in 10; as hints on greetings, poems and rude messages only, 9 in 10.
+  - **"ඒක නෙවේ මම අදහස් කරේ" (that's not what I meant)** was "I didn't understand". Now it
+    goes to the model with the exchange in view -- every exchange is kept in the history,
+    not only the model's, so it can see what is being corrected. Right after a note was
+    saved, it offers to remove that note, and removes it only on "ඔව්".
+  - Replaying the live log found a regression of 16 Oct's own-word rule: Whisper's
+    "Đáng mê lá và kiếm được" (දැන් වෙලාව කීයද) no longer got the time. The words are now
+    looked for by sound too.
+  - The tests that build the voice brain now run in a data folder of their own: with every
+    exchange recorded, they would otherwise have written into the real history.
+
 ### Day 30 — Its own voice, and what is next
 
 1. **A custom voice.** Clone a voice with XTTS or train a Piper voice so JARVIS does not sound

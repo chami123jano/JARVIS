@@ -184,7 +184,7 @@ class AnswerTests(unittest.TestCase):
         self.assertIn('(Answer in English.)', self.seen_by_the_model('what is the capital of Japan?'))
         for text in ('මට කෝපි හොඳද තේ හොඳද?', 'mata hondai coffee da tea da?'):
             with self.subTest(text=text):
-                self.assertIn('(Answer in Sinhala.)', self.seen_by_the_model(text))
+                self.assertIn('(Answer in everyday spoken Sinhala', self.seen_by_the_model(text))
 
     def test_a_plain_question_is_told_it_needs_no_tool(self):
         """Measured: "what should I eat for dinner?" got "I don't have a tool to suggest

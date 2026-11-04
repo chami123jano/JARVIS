@@ -81,6 +81,17 @@ QUESTION_WORDS = re.compile(
     r"many|price|prices|cost|costs|tell|me|about|built|kiyada|kiyak|eka|ekak|ganana|gana|"
     r"mila|kawda|kawuda|kawadada|kohedha|koheda|kohed|kohe|da)\b|[?!.,]|කවුද|කවදාද|කොහෙද|කීයද|කීයක්|ගාන|ගණන|මිල|එක|"
     r'හැදුවේ|හැදුවෙ|ගොඩනැගුවේ|සොයාගත්තේ|ලිව්වේ|දිනුවේ|දින්නේ', re.I)
+# Day 30, from the history: hello answered as a form, a poem answered with a question, and
+# "ඔයාට මොලයක් නැද්ද" (don't you have a brain) with "my brain works very well".
+GREETING = re.compile(r'^(hi|hello|hey|good (morning|evening|night)|හෙලෝ|හායි|ආයුබෝවන්|'
+                      # Not \b: after a Sinhala vowel sign it never matches (5 Nov:
+                      # "hi" was greeted by name and "හෙලෝ" was not).
+                      r'සුබ උදෑසනක්|ayubowan|helo)(?![a-z])[\s!.,]*(jarvis|ජාවිස්)?[\s!.,]*'
+                      r'(ඔයාට කොහොමද|how are you|kohomada)?[\s?!.]*$', re.I)
+ASKED_TO_CREATE = re.compile(r'\b(poem|joke|story|song lyrics)\b|කවියක්|කවි|විහිළුවක්|ජෝක්|'
+                             r'කතාවක්|kawiyak|kaviyak|vihiluwak|joke ekak', re.I)
+RUDE = re.compile(r'\b(useless|stupid|idiot|dumb|shut up)\b|මොලයක් නැද්ද|මොළයක් නැද්ද|'
+                  r'මෝඩ|පිස්සු|වැඩක් නෑ|molayak nadda|moda', re.I)
 DEEP_SECONDS = 900
 # Seconds without a request before the memory housekeeping after an answer may run.
 HOUSEKEEPING_QUIET = 10
@@ -299,6 +310,21 @@ class Agent:
             return []
 
     @staticmethod
+    def manner(prompt):
+        """How to say it, for the kinds of thing that need a word on manner (Day 30). Said
+        to the question, never in the system prompt: measured 5 Nov, three such sentences
+        there dropped "calculate, then save_note" from 6 saved in 6 to 3 in 10."""
+        text = str(prompt).strip()
+        if GREETING.match(text):
+            return '\n(Greet the user warmly by name, චමිදූ, in one short sentence.)'
+        if ASKED_TO_CREATE.search(text):
+            return '\n(Give it at once, a few good lines; do not ask which kind.)'
+        if RUDE.search(text):
+            return ('\n(The user is annoyed. Stay warm and brief: own any mistake in a few '
+                    'words and offer to try again. Do not argue or boast.)')
+        return ''
+
+    @staticmethod
     def plain_question(prompt):
         """A question asking for an answer, not an action: no tool's words in it."""
         text = str(prompt).strip()
@@ -456,7 +482,9 @@ class Agent:
                 if language_of(prompt) == 'si':
                     # Measured 16 Oct: "මට කෝපි හොඳද තේ හොඳද?" and "mata hondai coffee da
                     # tea da?" were both answered in English.
-                    asked += '\n(Answer in Sinhala.)'
+                    # Day 30: "මම ඔබේ පුද්ගලික මෙහෙයුම් සහකරුවෙක්", "සිටිනවා", "ඔබ"
+                    # throughout -- a form, not a friend.
+                    asked += '\n(Answer in everyday spoken Sinhala, saying ඔයා, never ඔබ.)'
                 elif spelled == prompt and language_of(prompt) == 'en':
                     # Measured 16 Oct: "what is the capital of Japan" was answered in
                     # Sinhala; the system prompt's Sinhala examples outweigh its rule.
@@ -505,6 +533,7 @@ class Agent:
                     # Measured: "what should I eat for dinner?" got "I don't have a tool to
                     # suggest meals". Said here, to this question only (see system_prompt).
                     asked += '\n(This needs no tool. Answer it yourself, with a real suggestion.)'
+                asked += self.manner(prompt)
                 messages = [{'role': 'system', 'content': self.system_prompt(prompt, excerpts)}, *history,
                             {'role': 'user', 'content': asked}]
                 answer = ''

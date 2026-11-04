@@ -477,6 +477,12 @@ def beep(frequency=880, seconds=.15, volume=.5):
 # A command taking longer than this has hung somewhere; the stacks go to the log.
 HANG_SECONDS = 90
 
+# "That is not what I meant", as people say it (Day 30).
+CORRECTION = re.compile(
+    r'(ඒක|එහෙම|මේක|එක)\s*(නෙවේ|නෙමෙයි|නෙවෙයි|නෙමේ)|අදහස් කරේ (ඒක|එහෙම) නෙවේ|වැරදියි|'
+    r"that'?s not what i (meant|asked|said)|not what i (meant|asked)|you got it wrong|"
+    r'\b(eka|ehema)\s*(newe|neme|nemei|nemeyi)\b|\bwaradi\b', re.I)
+
 # Its own name, as the recognisers actually wrote it in the log.
 GREETINGS = {'hei', 'hi', 'he', 'hai', 'ok', 'okei', 'ayi'}
 CALLED = re.compile(r'^\s*(?:(?:hey|hi|hay|ok|okay|හේ|හායි)[\s,]*)?'
@@ -1537,6 +1543,8 @@ def build_brain(args):
         """What is waiting for a yes, as it goes into the log of outward actions."""
         if pending.get('kind') == 'call':
             return 'call', {'to': pending['who'], 'number': pending['number']}
+        if pending.get('kind') == 'undo_note':
+            return 'undo_note', {'title': pending['note']['title']}
         if pending.get('kind') == 'email':
             draft = pending['draft']
             return 'send_email', {'to': draft['to'], 'subject': draft['subject'],
@@ -1545,6 +1553,13 @@ def build_brain(args):
 
     def send_pending(lang):
         """Carry out the message that was just confirmed."""
+        if pending.get('kind') == 'undo_note':
+            note = pending['note']
+            pending.clear()
+            store.update(note['id'], 'delete')
+            last_saved.update(id=None, title='', at=0.0)
+            agent.memory.reindex_in_background()
+            return responses.say_note_removed(note['title'], lang)
         if pending.get('kind') == 'call':
             import phone
             action, detail = pending_detail()
@@ -1593,6 +1608,44 @@ def build_brain(args):
         return ('It is typed in WhatsApp. Press Enter there to send it.' if lang == 'en'
                 else 'WhatsApp එකේ ටයිප් කරලා තියෙනවා. Enter ගහලා යවන්න.')
 
+    def model_reply(prompt, lang):
+        """The model's answer to this, waited for; said plainly if it fails or is busy."""
+        try:
+            job_id = agent.start(prompt)
+        except ValueError:
+            # One request at a time; measured, a second one got no answer at all.
+            return responses.say_still_thinking(lang)
+        for _ in range(1200):
+            job = agent.snapshot(job_id)
+            if job['state'] not in ('running', 'stopping'):
+                break
+            time.sleep(.25)
+        else:
+            agent.stop(job_id)
+            job = agent.snapshot(job_id)
+        if job['state'] == 'error':
+            print(f"  model failed: {job['answer'][:200]}", file=sys.stderr)
+            return responses.say_no_answer(lang)
+        return job['answer']
+
+    # Day 30: the note just saved, so "ඒක නෙවේ" (not that) right after can undo it.
+    last_saved = {'id': None, 'title': '', 'at': 0.0}
+    UNDO_SECONDS = 180
+
+    def correction(text, lang):
+        """"ඒක නෙවේ මම අදහස් කරේ" -- that is not what I meant. Measured 5 Nov: it came
+        after a question about a note had been saved as a note, and got "I didn't
+        understand". A note saved in the last three minutes is offered for removal; anything
+        else goes to the model, which now sees the exchange it is about."""
+        if last_saved['id'] and time.monotonic() - last_saved['at'] < UNDO_SECONDS:
+            pending.clear()
+            pending.update(kind='undo_note', note=dict(last_saved), language=lang)
+            return responses.say_offer_undo_note(last_saved['title'], lang)
+        return model_reply(f'{text}\n(The user is saying your last reply was not what they '
+                           'meant. Say sorry in a few words; then, if the conversation shows '
+                           'what they wanted, do it; otherwise ask one short question about '
+                           'what they meant.)', lang)
+
     def respond(text, speak=True, on_state=None):
         """Route, act, and say the answer. Returns the reply text.
 
@@ -1603,7 +1656,21 @@ def build_brain(args):
         live.LIVE.heard(text)
         reply = answer(text, speak, on_state)
         live.LIVE.said(reply)
+        remember_turn(text, reply)
         return reply
+
+    def remember_turn(text, reply):
+        """Every exchange in the conversation history, not only the model's. Day 30: "ඒක
+        නෙවේ මම අදහස් කරේ" (that's not what I meant) came after a note the router had
+        saved -- and the model, reading the history, could not see what it was about."""
+        try:
+            last = store.history()[-1:]
+            if last and last[0]['role'] == 'assistant' and last[0]['content'] == reply:
+                return                     # the model's own turn, already recorded
+            store.message('user', text)
+            store.message('assistant', reply)
+        except Exception as error:
+            print(f'  history: {error}', file=sys.stderr)
 
     def answer(text, speak=True, on_state=None):
         """Route, act, and say the answer. Returns the reply text."""
@@ -1624,16 +1691,27 @@ def build_brain(args):
                     speech.SPEAKER.say(reply)
                 return reply
             if permissions.is_no(text):
+                undo = pending.get('kind') == 'undo_note'
                 permissions.log(store, *pending_detail(), 'cancelled')
                 pending.clear()
-                reply = 'Cancelled.' if lang == 'en' else 'හරි, යැව්වේ නෑ.'
+                reply = ('Kept.' if undo else 'Cancelled.') if lang == 'en' else \
+                    ('හරි, තියාගත්තා.' if undo else 'හරි, යැව්වේ නෑ.')
                 print(f'  JARVIS: {reply}', flush=True)
                 if speak:
                     speech.SPEAKER.say(reply)
                 return reply
             # Neither: ask once more rather than guessing at a message to a person.
-            reply = ('Yes or no?' if lang == 'en' else 'යවන්නද, නැද්ද?')
+            reply = ('Yes or no?' if lang == 'en' else
+                     'අයින් කරන්නද, නැද්ද?' if pending.get('kind') == 'undo_note' else
+                     'යවන්නද, නැද්ද?')
             print(f'  JARVIS: {reply}', flush=True)
+            if speak:
+                speech.SPEAKER.say(reply)
+            return reply
+
+        if CORRECTION.search(text):
+            reply = correction(text, responses.language_of(text))
+            print(f'  JARVIS: {reply[:160]}', flush=True)
             if speak:
                 speech.SPEAKER.say(reply)
             return reply
@@ -1722,8 +1800,10 @@ def build_brain(args):
             # Saved here rather than by the model, which once announced it had saved a
             # note and never called the tool. The database is the proof, not the reply.
             try:
-                tools.execute('save_note', {'title': decision['content'], 'content': ''})
+                saved = tools.execute('save_note', {'title': decision['content'], 'content': ''})
                 agent.memory.reindex_in_background()
+                last_saved.update(id=saved.get('id'), title=decision['content'],
+                                  at=time.monotonic())
                 reply = responses.say_note_saved(decision['content'], lang)
             except Exception as error:
                 print(f'  save failed: {error}', file=sys.stderr)
@@ -1781,26 +1861,8 @@ def build_brain(args):
                 print(f'  skill {skill["name"]} failed: {error}', file=sys.stderr)
                 reply = responses.say_skill_failed(skill, str(error), lang)
         else:
-            prompt = command_prompt(decision) if decision['action'] == 'command' else text
-            try:
-                job_id = agent.start(prompt)
-            except ValueError:
-                # One request at a time; measured, a second one got no answer at all.
-                job_id = None
-                reply = responses.say_still_thinking(lang)
-            if job_id:
-                for _ in range(1200):
-                    job = agent.snapshot(job_id)
-                    if job['state'] not in ('running', 'stopping'):
-                        break
-                    time.sleep(.25)
-                else:
-                    agent.stop(job_id)
-                    job = agent.snapshot(job_id)
-                reply = job['answer']
-                if job['state'] == 'error':
-                    print(f'  model failed: {reply[:200]}', file=sys.stderr)
-                    reply = responses.say_no_answer(lang)
+            reply = model_reply(command_prompt(decision) if decision['action'] == 'command'
+                                else text, lang)
         print(f'  JARVIS: {reply[:160]}', flush=True)
         if speak:
             if on_state:

@@ -7,6 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sandbox import private_root
 import contacts
 import permissions
 import phone
@@ -74,6 +76,7 @@ class RoutingTests(unittest.TestCase):
 
 class ConversationTests(unittest.TestCase):
     def setUp(self):
+        private_root(self)        # never the real data/jarvis.db
         import documents
         import memory
         import notifications

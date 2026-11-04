@@ -675,7 +675,9 @@ def route(text):
               'runner_up': second, 'runner_up_score': round(second_score, 3),
               # Replies follow the language they were asked in.
               'language': language}
-    if name in OWN_WORDS and not OWN_WORDS[name].search(text):
+    # By sound too: Whisper wrote "දැන් වෙලාව කීයද" as "Đáng mê lá và kiếm được", whose
+    # "dang" is only found once the diacritics are gone (5 Nov).
+    if name in OWN_WORDS and not (OWN_WORDS[name].search(text) or OWN_WORDS[name].search(cleaned)):
         # "කීයද" is "how much" as well as "what time" and "how full": measured 16 Oct,
         # "iPhone 16 එක කීයද?" matched the time at 0.69 and was told it was two o'clock,
         # and "galaxy s25 eka kiyada" was the battery or a new skill.

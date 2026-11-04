@@ -818,7 +818,7 @@ place UI Automation is still needed, and now only as a rare second resort.
 
 ---
 
-#### Day 8, for an iPhone — calls through Phone Link (live test pending)
+#### ✅ Day 8 complete, for an iPhone — calls and notifications through Phone Link
 
 The plan assumed Android. On an iPhone, KDE Connect can do none of Day 8 -- Apple lets no
 app send an SMS, place a call or read notifications -- so `phone.py` goes through
@@ -830,9 +830,14 @@ default app for TEL links (it had been Skype for Business).
     iPhone only on "ඔව්" from your voice -- the tier-2 path WhatsApp and email use.
   - **"මගේ phone එක කොහෙද"**: Apple's Find My opens; you press Play Sound. No program may
     ring an iPhone.
-  - **iPhone notifications**: Phone Link shows them as Windows notifications, which Day 7b
-    already reads -- allowed by name, codes never read out. Waiting on a real one to learn
-    the name it arrives under.
+  - **iPhone notifications, spoken** (5 Nov): Phone Link posts them as Windows notifications
+    under "Phone Link", the iPhone app's name first -- ['Reminders', 'Jarvis test', 'Today,
+    04:05'] -- which Day 7b's listener now reads as app, sender, text. Allowed by the iPhone
+    app (WhatsApp, Messages, Reminders); a reminder is said as one; codes never read out;
+    the same message from the laptop's WhatsApp and the iPhone is said once. Phone Link's
+    "Pause banners when notifications are frequent" had to be turned off first.
+  - **Calls need one click**: JARVIS fills Phone Link's dial pad and says "Call ඔබන්න".
+    Pressing Call itself did not take, by accessibility press or by mouse.
   - **SMS: not built.** Phone Link gives a program no way to send one; WhatsApp by voice
     (Day 7) covers messages.
 

@@ -79,13 +79,23 @@ async def _read_all():
             binding = visual.get_binding('ToastGeneric') if visual else None
             if binding:
                 texts = [e.text for e in binding.get_text_elements() if e.text]
-            out.append({'id': item.id, 'app': app or '?',
-                        'title': texts[0] if texts else '',
-                        'body': ' '.join(texts[1:]) if len(texts) > 1 else '',
-                        'texts': texts})
+            out.append(dict(shaped(app or '?', texts), id=item.id))
         except Exception:
             continue
     return out
+
+
+def shaped(app, texts):
+    """A notification as {app, source, title, body, texts}. source is the application it
+    is really from: for the iPhone's, which Phone Link posts with the iPhone app's name as
+    the first line -- measured 5 Nov: ['Reminders', 'Jarvis test', 'Today, 04:05'] -- the
+    sender or title second and the text after."""
+    texts = [str(t) for t in texts if str(t).strip()]
+    if 'phone link' in str(app).lower() and len(texts) >= 2:
+        return {'app': app, 'source': texts[0], 'title': texts[1],
+                'body': ' '.join(texts[2:]), 'texts': texts, 'iphone': True}
+    return {'app': app, 'source': app, 'title': texts[0] if texts else '',
+            'body': ' '.join(texts[1:]), 'texts': texts, 'iphone': False}
 
 
 def read_all():
@@ -133,8 +143,10 @@ def describe(item, store, lang='si'):
     """
     import contacts
 
-    app = (item.get('app') or '').lower()
-    if not any(allowed in app for allowed in allowed_apps(store)):
+    # Allowed by the application it is really from: "WhatsApp" covers the laptop's and the
+    # iPhone's (through Phone Link) alike.
+    names = f"{item.get('source') or ''} {item.get('app') or ''}".lower()
+    if not any(allowed in names for allowed in allowed_apps(store)):
         return None
 
     sender = (item.get('title') or '').strip()
@@ -153,6 +165,13 @@ def describe(item, store, lang='si'):
                   else f'{called}ගෙන් කේතයක් ආවා. ස්ක්‍රීන් එකේ තියෙනවා.')
         return {'spoken': spoken, 'shown': f'{sender}: {body}', 'code': True,
                 'sender': sender, 'app': item.get('app')}
+
+    source = (item.get('source') or '').lower()
+    if item.get('iphone') and any(kind in source for kind in ('reminder', 'calendar')):
+        spoken = (f'A reminder on your iPhone: {sender}.' if lang == 'en'
+                  else f'iPhone එකේ මතක් කිරීමක්: {sender}.')
+        return {'spoken': spoken, 'shown': f'{item.get("source")}: {sender}', 'code': False,
+                'sender': sender, 'app': item.get('source')}
 
     if not store.config('read_message_body', True):
         spoken = (f'{called} messaged you.' if lang == 'en'
@@ -207,12 +226,26 @@ class Watcher:
         while self.running:
             for item in self.poll():
                 described = describe(item, self.store, lang)
+                if described and self.repeated(described):
+                    continue
                 if described:
                     try:
                         on_message(described)
                     except Exception as error:
                         print(f'  notification handler failed: {error}', file=sys.stderr)
             time.sleep(interval)
+
+    def repeated(self, described, within=120):
+        """The same message arriving twice -- from WhatsApp on the laptop and again from the
+        iPhone through Phone Link -- is said once."""
+        now = time.monotonic()
+        recent = getattr(self, 'recent', {})
+        self.recent = {k: t for k, t in recent.items() if now - t < within}
+        key = (str(described.get('sender', '')).lower(), str(described.get('body', ''))[:120])
+        if key in self.recent:
+            return True
+        self.recent[key] = now
+        return False
 
     def stop(self):
         self.running = False

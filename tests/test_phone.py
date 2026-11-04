@@ -60,6 +60,50 @@ class NumberTests(unittest.TestCase):
             'call', {'to': 'අම්මා', 'number': '077 123 4567'}, 'si'))
 
 
+class IphoneNotificationTests(unittest.TestCase):
+    """Phone Link posts the iPhone's notifications with the iPhone app's name first --
+    measured 5 Nov: ['Reminders', 'Jarvis test', 'Today, 04:05']."""
+
+    def setUp(self):
+        import tempfile
+        import notifications
+        from assistant_core import Store
+        self.notifications = notifications
+        self.temp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.temp.name) / 'n.db')
+        for app in ('WhatsApp', 'Reminders'):
+            notifications.allow(self.store, app)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def said(self, app, texts):
+        item = dict(self.notifications.shaped(app, texts), id=1)
+        found = self.notifications.describe(item, self.store, 'si')
+        return found['spoken'] if found else None
+
+    def test_the_iphone_app_sender_and_text(self):
+        self.assertEqual(self.said('Phone Link', ['WhatsApp', 'Kasun', 'heta hambawemu']),
+                         'Kasunගෙන් මැසේජ් එකක් ආවා. heta hambawemu')
+
+    def test_a_reminder_is_said_as_one(self):
+        self.assertEqual(self.said('Phone Link', ['Reminders', 'Jarvis test', 'Today, 04:05']),
+                         'iPhone එකේ මතක් කිරීමක්: Jarvis test.')
+
+    def test_only_allowed_apps_and_never_a_code(self):
+        self.assertIsNone(self.said('Phone Link', ['Snapchat', 'someone', 'sent a snap']))
+        self.assertNotIn('384521', self.said('Phone Link', ['WhatsApp', 'Bank', 'Your OTP is 384521']))
+
+    def test_the_same_message_twice_is_said_once(self):
+        watcher = self.notifications.Watcher(self.store)
+        laptop = self.notifications.describe(
+            dict(self.notifications.shaped('WhatsApp', ['Kasun', 'hi']), id=1), self.store)
+        iphone = self.notifications.describe(
+            dict(self.notifications.shaped('Phone Link', ['WhatsApp', 'Kasun', 'hi']), id=2), self.store)
+        self.assertFalse(watcher.repeated(laptop))
+        self.assertTrue(watcher.repeated(iphone))
+
+
 class RoutingTests(unittest.TestCase):
     def test_calls_and_the_lost_phone(self):
         for text, command in (('අම්මාට call එකක් ගන්න', 'call'), ('kasunta call karanna', 'call'),

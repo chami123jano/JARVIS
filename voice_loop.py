@@ -1080,6 +1080,24 @@ def build_brain(args):
     # "yes" is usually too short to judge, so it is refused only if clearly someone else.
     import speaker as voices
 
+    def load_native_libraries():
+        """Load every compiled library the background threads use, one after another, on
+        this thread, before any of them starts.
+
+        Measured 5 Nov (faulthandler): the voice loop died with an access violation at
+        start, eight times in a day, whenever three threads loaded native libraries at the
+        same instant -- onnxruntime for the offline voice, cryptography for the phone
+        certificate, and WinRT for notifications. Loaded first, here, a later import is
+        only a lookup."""
+        for name in ('numpy', 'onnxruntime', 'piper', 'cryptography.x509',
+                     'cryptography.hazmat.primitives.asymmetric.ec', 'ssl', 'av',
+                     'winrt.windows.ui.notifications',
+                     'winrt.windows.ui.notifications.management', 'win32com.client'):
+            try:
+                __import__(name)
+            except Exception as error:          # an optional part missing is not fatal
+                print(f'  (not loaded at start: {name}: {type(error).__name__})', file=sys.stderr)
+
     def preload_offline_voice():
         try:
             import offline_voice
@@ -1300,6 +1318,7 @@ def build_brain(args):
 
     def start_watching():
         """Start speaking first: reminders and routines, and arriving messages."""
+        load_native_libraries()
         # The console's live picture (Day 24): state, microphone level, subtitles.
         import live
         live.serve(speaking=lambda: speech.SPEAKER.speaking, answer=answer_typed)
@@ -1681,10 +1700,14 @@ def build_brain(args):
             pending.clear()
             pending.update(kind='undo_note', note=dict(last_saved), language=lang)
             return responses.say_offer_undo_note(last_saved['title'], lang)
+        # The language said outright: the English hint made a Sinhala correction look
+        # English, and the reply came in English (5 Nov).
+        language = ('Answer in everyday spoken Sinhala, saying ඔයා.' if lang == 'si'
+                    else 'Answer in English.')
         return model_reply(f'{text}\n(The user is saying your last reply was not what they '
                            'meant. Say sorry in a few words; then, if the conversation shows '
                            'what they wanted, do it; otherwise ask one short question about '
-                           'what they meant.)', lang)
+                           f'what they meant. {language})', lang)
 
     def respond(text, speak=True, on_state=None):
         """Route, act, and say the answer. Returns the reply text.
@@ -1998,6 +2021,11 @@ def wake_loop(args):
 
 def main():
     global SPEECH_ON, SPEECH_OFF
+    # A crash inside native code (exit code 3221225477, an access violation) leaves no
+    # Python trace at all; this prints where it happened to voice.log. Measured 5 Nov:
+    # eight such restarts in a day, invisible until the service log was read.
+    import faulthandler
+    faulthandler.enable(file=sys.stderr, all_threads=True)
     parser = argparse.ArgumentParser(description='JARVIS microphone and transcription loop')
     parser.add_argument('--once', action='store_true', help='record a single utterance and print it')
     parser.add_argument('--session', type=int, metavar='N',

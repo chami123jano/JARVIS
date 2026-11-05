@@ -208,11 +208,11 @@ class ClaimCheckTests(AssistantBase):
     def test_ordinary_answers_are_not_flagged(self):
         """A false positive would send a finished request round the loop again."""
         for answer in ('Your notes: buy milk, pay the bill.',
-                       'ඔබට සටහන් දෙකක් තියෙනවා.',
+                       'ඔයාට සටහන් දෙකක් තියෙනවා.',
                        'The CPU is at 40 percent.',
                        'I will set a reminder if you tell me when.',
                        'Would you like me to save that as a note?',
-                       'ඔබට සටහන් නැහැ.'):
+                       'ඔයාට සටහන් නැහැ.'):
             with self.subTest(answer=answer[:40]):
                 self.assertEqual(Agent.unperformed_claims(answer, set()), [])
 

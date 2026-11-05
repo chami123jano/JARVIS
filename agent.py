@@ -479,13 +479,17 @@ class Agent:
                 if spelled != prompt:
                     # Measured: qwen3.5 read "mokakda mama parata kiwwe" as "uncle ... road".
                     asked = f'{prompt}\n(The same, in Sinhala script: {spelled})'
-                if language_of(prompt) == 'si':
+                # The language of the user's own words, not of a note JARVIS added after
+                # them in brackets: "ඒක නෙවේ මම අදහස් කරේ" with its English instruction
+                # counted as English, and was answered in English (5 Nov).
+                said = prompt.split('\n(')[0]
+                if language_of(said) == 'si':
                     # Measured 16 Oct: "මට කෝපි හොඳද තේ හොඳද?" and "mata hondai coffee da
                     # tea da?" were both answered in English.
                     # Day 30: "මම ඔබේ පුද්ගලික මෙහෙයුම් සහකරුවෙක්", "සිටිනවා", "ඔබ"
                     # throughout -- a form, not a friend.
                     asked += '\n(Answer in everyday spoken Sinhala, saying ඔයා, never ඔබ.)'
-                elif spelled == prompt and language_of(prompt) == 'en':
+                elif spelled == prompt and language_of(said) == 'en':
                     # Measured 16 Oct: "what is the capital of Japan" was answered in
                     # Sinhala; the system prompt's Sinhala examples outweigh its rule.
                     asked = f'{prompt}\n(Answer in English.)'

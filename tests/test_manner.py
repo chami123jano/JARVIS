@@ -52,6 +52,14 @@ class MannerTests(unittest.TestCase):
         self.assertIn('do not ask which kind', self.seen('මට කවියක් කියන්න')['text'])
         self.assertIn('annoyed', self.seen('ඔයාට මොලයක් නැද්ද')['text'])
 
+    def test_the_language_is_the_users_not_the_note_added_after(self):
+        """Measured 5 Nov: a Sinhala correction with JARVIS's English instruction after it
+        was answered in English."""
+        text = 'ඒක නෙවේ මම අදහස් කරේ\n(The user is saying your last reply was not what they meant.)'
+        seen = self.seen(text)['text']
+        self.assertIn('everyday spoken Sinhala', seen)
+        self.assertNotIn('(Answer in English.)', seen)
+
     def test_none_of_it_is_in_the_system_prompt(self):
         """Measured 5 Nov: such sentences there dropped tool use from 6 in 6 to 3 in 10."""
         system = self.seen('Use calculate for 137 * 23')['system']

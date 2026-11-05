@@ -191,7 +191,7 @@ def say_system(result, lang='si'):
 def say_notes(records, lang='si'):
     notes = [r for r in records if r['kind'] == 'note' and not r['done']]
     if not notes:
-        return 'You have no notes.' if lang == 'en' else 'ඔබට සටහන් නැහැ.'
+        return 'You have no notes.' if lang == 'en' else 'ඔයාට සටහන් නැහැ.'
     listed = '. '.join(note['title'] for note in notes[:5])
     if lang == 'en':
         if len(notes) == 1:
@@ -199,9 +199,9 @@ def say_notes(records, lang='si'):
         more = f' And {english_number(len(notes) - 5)} more.' if len(notes) > 5 else ''
         return f'You have {english_number(len(notes))} notes. {listed}.{more}'
     if len(notes) == 1:
-        return f'ඔබට සටහනක් තියෙනවා. {notes[0]["title"]}.'
+        return f'ඔයාට සටහනක් තියෙනවා. {notes[0]["title"]}.'
     more = f' තව {number_word(len(notes) - 5)}ක් තියෙනවා.' if len(notes) > 5 else ''
-    return f'ඔබට සටහන් {number_word(len(notes))}ක් තියෙනවා. {listed}.{more}'
+    return f'ඔයාට සටහන් {number_word(len(notes))}ක් තියෙනවා. {listed}.{more}'
 
 
 def say_reminders(records, lang='si'):

@@ -14,7 +14,9 @@ onnxruntime>=1.30,<2
 # free neural endpoint. Needs the internet; speech.py falls back to SAPI when it is down.
 # Audio is decoded with PyAV (already present via faster-whisper) and played through
 # sounddevice, so playback can be interrupted mid-sentence.
-edge-tts>=7,<8
+# 7.3.1 or later: with 7.2.8 every request was refused (403) from 15 Oct to 5 Nov -- the
+# service had changed its token check, and the newer release follows it.
+edge-tts>=7.3.1,<8
 
 # Google's si-LK speech recogniser, through the free endpoint. Measured on the same 20
 # Sinhala recordings as Whisper: mean 0.940 against 0.758, 20 of 20 usable against 16,

@@ -108,6 +108,163 @@ def open_chat(phone, text, wait=LAUNCH_TIMEOUT):
     raise SendError('WhatsApp did not open within %d seconds' % wait)
 
 
+BOX_PREFIX = 'type a message to '
+
+
+def message_box():
+    """WhatsApp's message box and the window it is in, or (None, None).
+
+    WhatsApp Desktop 2.26 is a web page inside a window; its box is an edit control named
+    "Type a message to Amma", whose value is what is typed in it ("\\n" when empty).
+    """
+    try:
+        import uiautomation as auto
+    except ImportError:
+        return None, None
+    for window in auto.GetRootControl().GetChildren():
+        if not any(hint in (window.Name or '').lower() for hint in WHATSAPP_WINDOW_HINTS):
+            continue
+        box = window.EditControl(searchDepth=40, RegexName='(?i)^type a message')
+        try:
+            if box.Exists(0, 0):
+                return window, box
+        except Exception:
+            continue
+    return None, None
+
+
+def chat_name(box):
+    """Who the box writes to: "Amma" from "Type a message to Amma"."""
+    name = str(getattr(box, 'Name', '') or '')
+    return name[len(BOX_PREFIX):].strip() if name.lower().startswith(BOX_PREFIX) else name
+
+
+def box_text(box):
+    try:
+        return str(box.GetValuePattern().Value or '').strip()
+    except Exception:
+        return ''
+
+
+def is_their_chat(name, before, names=(), phone=''):
+    """Is the open chat the one the link asked for?
+
+    The link opens the chat a moment later, and pasting into the chat that was open before
+    sends your words to someone else. So it counts only once the chat changed, or its name
+    is the contact's (WhatsApp's own name for them may differ: then only a change counts).
+    """
+    if not name:
+        return False
+    if before is not None and name != before:
+        return True
+    plain = name.lower()
+    for known in names:
+        known = str(known or '').lower().strip()
+        if known and (known == plain or known in plain.split() or plain in known.split()):
+            return True
+    digits = ''.join(c for c in name if c.isdigit())
+    wanted = ''.join(c for c in str(phone) if c.isdigit())
+    return bool(digits) and len(digits) >= 9 and wanted.endswith(digits[-9:])
+
+
+def wait_for_chat(before, names=(), phone='', wait=8.0):
+    """The message box once the right chat is open, or None."""
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        window, box = message_box()
+        if box is not None and is_their_chat(chat_name(box), before, names, phone):
+            return window, box
+        time.sleep(.25)
+    return None, None
+
+
+def same_text(typed, wanted):
+    squash = lambda s: ' '.join(str(s).split())
+    return squash(typed) == squash(wanted)
+
+
+def _clipboard_text():
+    import win32clipboard as clipboard
+    clipboard.OpenClipboard()
+    try:
+        if clipboard.IsClipboardFormatAvailable(clipboard.CF_UNICODETEXT):
+            return clipboard.GetClipboardData(clipboard.CF_UNICODETEXT)
+        return None
+    finally:
+        clipboard.CloseClipboard()
+
+
+def _set_clipboard(text):
+    import win32clipboard as clipboard
+    clipboard.OpenClipboard()
+    try:
+        clipboard.EmptyClipboard()
+        clipboard.SetClipboardData(clipboard.CF_UNICODETEXT, text)
+    finally:
+        clipboard.CloseClipboard()
+
+
+def click(box):
+    """A real click in the box, the pointer put back after. Measured 7 Nov: once JARVIS
+    has started another program (the link), focusing the box through UI Automation
+    reports focus but Ctrl+V lands in nothing; a click gives the page the keyboard."""
+    import ctypes
+    import win32api
+    try:
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except Exception:
+        pass
+    where = win32api.GetCursorPos()
+    try:
+        box.Click(simulateMove=False, waitTime=.3)
+    finally:
+        try:
+            win32api.SetCursorPos(where)
+        except Exception:
+            pass
+
+
+def type_into(window, box, text):
+    """Paste the text into the box and read it back. Measured 7 Nov: WhatsApp 2.2642
+    opens the chat from the link but drops its text, so the box stayed empty while
+    JARVIS said it was typed."""
+    import uiautomation as auto
+    if same_text(box_text(box), text):
+        return True                     # an older WhatsApp that keeps the link's text
+    if box_text(box):
+        raise SendError('there is already something typed in that chat')
+    try:
+        saved = _clipboard_text()
+    except Exception:
+        saved = None
+    try:
+        _set_clipboard(text)
+        # Twice at most: a paste made while the chat is still drawing lands in nothing.
+        for _ in range(2):
+            window.SetActive()
+            window.SetFocus()
+            click(box)
+            if not (foreground_is_whatsapp() and box.HasKeyboardFocus):
+                raise SendError('WhatsApp is not the active window')
+            if not box_text(box):
+                auto.SendKeys('{Ctrl}v', waitTime=.3)
+            for _ in range(6):
+                time.sleep(.25)
+                if box_text(box):
+                    break
+            if box_text(box):
+                break
+            window, fresh = message_box()
+            box = fresh if fresh is not None else box
+    finally:
+        try:
+            if saved is not None:
+                _set_clipboard(saved)
+        except Exception:
+            pass
+    return same_text(box_text(box), text)
+
+
 def press_enter():
     """Send Return to whatever has focus, only once WhatsApp actually has it.
 
@@ -127,20 +284,45 @@ def press_enter():
     return True
 
 
-def send(phone, text, auto_send=False, settle=1.2):
-    """Open the chat, and press Enter only when explicitly told to.
+def send(phone, text, auto_send=False, names=(), settle=.3):
+    """Open the chat, type the message, and press Enter only when explicitly told to.
 
     auto_send is False by default. With it off, the message sits visibly in your own
     WhatsApp window and you press Enter, so nothing leaves the machine without a human
     keystroke. That is a weaker promise to make than 'the confirmation logic is correct',
     and a much easier one to keep.
+
+    'typed' is True only when the box was read back with the message in it.
     """
+    try:
+        import uiautomation as auto
+        in_thread = auto.UIAutomationInitializerInThread()
+    except ImportError as error:
+        raise SendError('uiautomation is required to type the message') from error
+    with in_thread:
+        return _send(phone, text, auto_send, names, settle)
+
+
+def _send(phone, text, auto_send, names, settle):
+    _, box = message_box()
+    before = chat_name(box) if box is not None else None
     result = open_chat(phone, text)
     result['sent'] = False
+    window, box = wait_for_chat(before, names, phone)
+    if box is None:
+        raise SendError('WhatsApp opened, but not on that chat, so nothing was typed')
+    time.sleep(1.0)                     # the chat finishes drawing; its box is replaced
+    window, fresh = message_box()
+    if fresh is not None and chat_name(fresh) == chat_name(box):
+        box = fresh
+    result['chat'] = chat_name(box)
+    result['typed'] = type_into(window, box, text)
+    if not result['typed']:
+        raise SendError('WhatsApp opened the chat, but the message did not appear in it')
     if not auto_send:
         result['note'] = 'Message is typed in WhatsApp. Press Enter there to send it.'
         return result
-    time.sleep(settle)          # let the text finish arriving in the box
+    time.sleep(settle)
     press_enter()
     result['sent'] = True
     return result

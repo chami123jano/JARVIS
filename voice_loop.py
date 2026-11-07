@@ -1653,7 +1653,8 @@ def build_brain(args):
         pending.clear()
         auto = bool(store.config('auto_send', False))
         try:
-            result = messaging.send(person['phone'], body, auto_send=auto)
+            result = messaging.send(person['phone'], body, auto_send=auto,
+                                    names=(person.get('name'), person.get('nickname')))
         except messaging.SendError as error:
             permissions.log(store, 'send_message',
                             {'to': person['name'], 'text': body}, f'failed: {error}')
@@ -1664,8 +1665,10 @@ def build_brain(args):
         if result.get('sent'):
             called = contacts.speakable(person, lang)
             return f'Sent to {called}.' if lang == 'en' else f'{called}ට යැව්වා.'
-        return ('It is typed in WhatsApp. Press Enter there to send it.' if lang == 'en'
-                else 'WhatsApp එකේ ටයිප් කරලා තියෙනවා. Enter ගහලා යවන්න.')
+        called = contacts.speakable(person, lang)
+        return (f'It is typed in {called}\'s WhatsApp chat. Press Enter there to send it.'
+                if lang == 'en'
+                else f'{called}ගේ WhatsApp chat එකේ ටයිප් කරලා තියෙනවා. Enter ගහලා යවන්න.')
 
     def model_reply(prompt, lang):
         """The model's answer to this, waited for; said plainly if it fails or is busy."""

@@ -104,10 +104,52 @@ class SendingTests(unittest.TestCase):
     def test_nothing_is_sent_without_auto_send(self):
         """The default leaves the message in WhatsApp for a human to send."""
         with patch.object(messaging, 'open_chat', return_value={'opened': True}), \
+             patch.object(messaging, 'message_box', return_value=(None, None)), \
+             patch.object(messaging, 'wait_for_chat', return_value=('window', 'box')), \
+             patch.object(messaging, 'chat_name', return_value='Amma'), \
+             patch.object(messaging, 'type_into', return_value=True), \
              patch.object(messaging, 'press_enter',
                           side_effect=AssertionError('pressed Enter unasked')):
             result = messaging.send('94771234567', 'hello')
         self.assertFalse(result['sent'])
+        self.assertTrue(result['typed'])
+
+    def test_an_empty_box_is_not_reported_as_typed(self):
+        """7 Nov: WhatsApp 2.2642 opened amma's chat without the text, and JARVIS said
+        "It is typed in WhatsApp"."""
+        with patch.object(messaging, 'open_chat', return_value={'opened': True}), \
+             patch.object(messaging, 'message_box', return_value=(None, None)), \
+             patch.object(messaging, 'wait_for_chat', return_value=('window', 'box')), \
+             patch.object(messaging, 'chat_name', return_value='Amma'), \
+             patch.object(messaging, 'type_into', return_value=False), \
+             patch.object(messaging, 'press_enter',
+                          side_effect=AssertionError('pressed Enter on an empty box')):
+            with self.assertRaises(messaging.SendError):
+                messaging.send('94771234567', 'hello', auto_send=True)
+
+    def test_nothing_is_typed_while_the_old_chat_is_still_open(self):
+        with patch.object(messaging, 'open_chat', return_value={'opened': True}), \
+             patch.object(messaging, 'message_box', return_value=(None, None)), \
+             patch.object(messaging, 'wait_for_chat', return_value=(None, None)), \
+             patch.object(messaging, 'type_into',
+                          side_effect=AssertionError('typed into the wrong chat')):
+            with self.assertRaises(messaging.SendError):
+                messaging.send('94771234567', 'hello')
+
+    def test_which_chat_is_open(self):
+        class Box:
+            Name = 'Type a message to Amma'
+        self.assertEqual(messaging.chat_name(Box()), 'Amma')
+        # The chat that was open before the link is not the one asked for...
+        self.assertFalse(messaging.is_their_chat('Malindu Raja', 'Malindu Raja', ('amma',)))
+        # ...unless it is that person's, by name or number.
+        self.assertTrue(messaging.is_their_chat('Amma', 'Amma', ('amma', 'අම්මා')))
+        self.assertTrue(messaging.is_their_chat('+94 71 811 6351', '+94 71 811 6351',
+                                                (), '94718116351'))
+        # A change of chat after the link is the link's chat.
+        self.assertTrue(messaging.is_their_chat('Ammi', 'Malindu Raja', ('amma',)))
+        self.assertFalse(messaging.is_their_chat('', None, ('amma',)))
+        self.assertTrue(messaging.same_text('kohomada\n', ' kohomada'))
 
     def test_enter_is_refused_when_whatsapp_is_not_in_front(self):
         """A blind keystroke types the message into whatever has focus."""

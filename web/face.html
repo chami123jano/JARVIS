@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS Face</title><link rel="icon" href="data:,">
+<style>
+@font-face{font-family:DM;src:url(assets/dm-sans.woff2)}
+:root{color-scheme:dark;--bg:#030708;--text:#d8f6f5;--muted:#5f8a8b;--cyan:#72e4e2;--amber:#dfb67d;--line:#16302f}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:DM,Segoe UI,sans-serif;overflow:hidden}
+body{background:radial-gradient(ellipse at 50% 42%,#0b2224 0%,#051012 45%,var(--bg) 80%)}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.scan{position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(114,228,226,.035) 0 1px,transparent 1px 3px);mix-blend-mode:screen}
+.vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.65) 100%)}
+.hud{position:fixed;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:flex-start;padding:22px 28px;font-family:Consolas,monospace;font-size:11px;color:var(--muted);letter-spacing:.14em;pointer-events:none}
+.hud a,.hud button{pointer-events:auto;color:var(--muted);text-decoration:none;background:none;border:1px solid var(--line);padding:7px 12px;border-radius:4px;font:inherit;letter-spacing:inherit;cursor:pointer}
+.hud a:hover,.hud button:hover{color:var(--text);border-color:#2b5655}
+.word{font-family:DM,Segoe UI,sans-serif;font-size:18px;letter-spacing:.42em;color:var(--text);margin-bottom:8px}
+#state{display:flex;align-items:center;gap:9px}
+#state b{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan)}
+#state[data-state=thinking] b{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+#state[data-state=off] b{background:#7a3b45;box-shadow:none}
+.right{text-align:right;display:grid;gap:10px;justify-items:end}
+.subs{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);width:min(860px,calc(100% - 32px));text-align:center;pointer-events:none}
+.subs p{margin:6px 0;line-height:1.5;text-shadow:0 0 12px rgba(0,0,0,.9)}
+#you{color:var(--muted);font-size:15px;min-height:1.5em}
+#jarvis{color:var(--text);font-size:21px;min-height:1.5em}
+form{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:min(620px,calc(100% - 32px));display:flex;gap:8px}
+input{flex:1;background:rgba(6,20,22,.75);border:1px solid var(--line);color:var(--text);padding:12px 16px;border-radius:24px;font:inherit;font-size:14px;outline:none}
+input:focus{border-color:#2f6866}
+form button{background:rgba(114,228,226,.12);color:var(--cyan);border:1px solid #23504f;border-radius:24px;padding:0 18px;font:inherit;cursor:pointer}
+form button:disabled{opacity:.4}
+.hint{position:fixed;left:28px;bottom:30px;font-family:Consolas,monospace;font-size:10px;letter-spacing:.14em;color:#3d6162}
+@media (max-width:700px){.hint{display:none}#jarvis{font-size:17px}.subs{bottom:84px}}
+</style></head>
+<body>
+<canvas id="face" aria-label="JARVIS hologram face"></canvas>
+<div class="scan"></div><div class="vignette"></div>
+<div class="hud">
+  <div><div class="word">J.A.R.V.I.S</div><div id="state" data-state="idle"><b></b><span id="stateText">STANDING BY</span></div></div>
+  <div class="right"><span id="clock"></span><span><a href="/">CONSOLE</a> <button id="full" type="button">FULL SCREEN</button></span></div>
+</div>
+<div class="subs" aria-live="polite"><p id="you"></p><p id="jarvis"></p></div>
+<form id="ask"><input id="prompt" maxlength="12000" autocomplete="off" placeholder="Say &quot;Hey JARVIS&quot;, or type here" aria-label="Type to JARVIS"><button id="send">Send</button></form>
+<div class="hint">F &middot; FULL SCREEN</div>
+<script src="face.js"></script>
+</body></html>

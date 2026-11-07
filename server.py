@@ -245,7 +245,9 @@ def create_server(port=4190, data_dir=None):
                     # rather than straight to the model, which invented a song for
                     # "sinduwak play karanna" (16 Oct). Spoken there, if voice is on here.
                     import live
-                    aloud = bool(store.config('voice_enabled', False))
+                    # The face page asks for its replies aloud: a face that talks.
+                    aloud = bool(body['speak']) if 'speak' in body else \
+                        bool(store.config('voice_enabled', False))
                     return self.send({'id': agent.relay(prompt, lambda text: live.ask(text, aloud))})
                 if path == '/api/stop':
                     agent.stop(body['id'])

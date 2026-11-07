@@ -31,6 +31,25 @@ CACHE = ROOT / 'data' / 'tts_cache'
 SINHALA_VOICE = 'si-LK-SameeraNeural'
 ENGLISH_VOICE = 'en-GB-RyanNeural'
 SAMPLE_RATE = 24000          # what the endpoint returns
+ENVELOPE_RATE = 50           # loudness steps a second, for the face's mouth
+
+
+def envelope(audio, rate=SAMPLE_RATE, steps=ENVELOPE_RATE):
+    """Loudness of the audio, 0 to 1, fifty times a second: what moves the face's mouth.
+    Scaled to the clip's own loud parts, so a quiet voice still opens it."""
+    try:
+        import numpy
+        samples = numpy.asarray(audio, dtype='float32').reshape(-1)
+        size = max(1, int(rate / steps))
+        count = len(samples) // size
+        if not count:
+            return []
+        frames = samples[:count * size].reshape(count, size)
+        loud = numpy.sqrt(numpy.mean(frames * frames, axis=1))
+        top = max(float(numpy.percentile(loud, 95)), 1e-4)
+        return [round(float(v), 2) for v in numpy.clip(loud / top, 0, 1)]
+    except Exception:
+        return []
 # Offline, a Sinhala reply this short is read aloud in Latin letters; longer is too garbled.
 SPEAK_ROMANISED_UP_TO = 8
 # After a failure, the online voice is tried again only after this long.
@@ -187,6 +206,7 @@ class Speaker:
         self.issued = 0
         self.cancelled_through = 0
         self.speaking = False
+        self.playing = None
         self.last_error = ''
         # When the online voice last failed. Measured 16 Oct: every reply waited 1.4 s for
         # a refusal before the offline voice began; now the next ones skip it.
@@ -216,17 +236,31 @@ class Speaker:
         import sounddevice
         if audio is None or not len(audio):
             return True
-        sounddevice.play(audio, SAMPLE_RATE)
-        finish = time.monotonic() + len(audio) / SAMPLE_RATE + 1
-        while time.monotonic() < finish:
-            if self.is_cancelled(number):
-                sounddevice.stop()
-                return False
-            stream = sounddevice.get_stream()
-            if stream is None or not stream.active:
-                break
-            time.sleep(.03)
-        return True
+        self.playing = {'id': number * 1000 + int(time.monotonic() * 10) % 1000,
+                        'envelope': envelope(audio, SAMPLE_RATE), 'start': time.monotonic()}
+        try:
+            sounddevice.play(audio, SAMPLE_RATE)
+            finish = time.monotonic() + len(audio) / SAMPLE_RATE + 1
+            while time.monotonic() < finish:
+                if self.is_cancelled(number):
+                    sounddevice.stop()
+                    return False
+                stream = sounddevice.get_stream()
+                if stream is None or not stream.active:
+                    break
+                time.sleep(.03)
+            return True
+        finally:
+            self.playing = None
+
+    def voice_now(self):
+        """How loud the voice is through what is playing, for the face's mouth:
+        {id, rate, envelope, elapsed}, or None when nothing is playing."""
+        playing = getattr(self, 'playing', None)
+        if not playing:
+            return None
+        return {'id': playing['id'], 'rate': ENVELOPE_RATE, 'envelope': playing['envelope'],
+                'elapsed': round(time.monotonic() - playing['start'], 3)}
 
     def say(self, text, rate='+0%', fallback=True):
         """Speak text aloud. Returns a dict describing what actually happened."""

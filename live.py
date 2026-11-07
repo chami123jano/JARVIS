@@ -53,11 +53,13 @@ class Live:
                 self.lines.append(dict(who=who, text=str(text)[:400],
                                        at=time.strftime('%H:%M:%S'), **extra))
 
-    def snapshot(self, speaking=False):
+    def snapshot(self, speaking=False, voice=None):
+        """voice: how loud JARVIS's own voice is through what is playing (the face's
+        mouth), from speech.Speaker.voice_now."""
         with self.lock:
             state = 'speaking' if speaking and self.state in ('idle', 'thinking') else self.state
             return {'running': True, 'state': state, 'levels': list(self.levels),
-                    'lines': list(self.lines), 'since': self.started}
+                    'lines': list(self.lines), 'since': self.started, 'voice': voice}
 
 
 LIVE = Live()
@@ -99,7 +101,8 @@ def ask(text, speak=True, port=None, timeout=240):
         return None
 
 
-def serve(live=LIVE, speaking=lambda: False, port=PORT, answer=None, token_file=None):
+def serve(live=LIVE, speaking=lambda: False, port=PORT, answer=None, token_file=None,
+          voice=None):
     """Serve the live picture on 127.0.0.1 in a background thread. Returns the server.
 
     answer(text, speak) -> reply, if given, handles typed requests from the console on
@@ -138,7 +141,11 @@ def serve(live=LIVE, speaking=lambda: False, port=PORT, answer=None, token_file=
                 self.send_response(404)
                 self.end_headers()
                 return
-            body = json.dumps(live.snapshot(speaking()), ensure_ascii=False).encode('utf-8')
+            try:
+                sound = voice() if voice else None
+            except Exception:
+                sound = None
+            body = json.dumps(live.snapshot(speaking(), sound), ensure_ascii=False).encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.send_header('Content-Length', str(len(body)))

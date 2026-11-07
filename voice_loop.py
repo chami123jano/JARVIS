@@ -1321,7 +1321,8 @@ def build_brain(args):
         load_native_libraries()
         # The console's live picture (Day 24): state, microphone level, subtitles.
         import live
-        live.serve(speaking=lambda: speech.SPEAKER.speaking, answer=answer_typed)
+        live.serve(speaking=lambda: speech.SPEAKER.speaking, answer=answer_typed,
+                   voice=speech.SPEAKER.voice_now)
         # Load the offline voice now, not on the first reply (2 s, measured 16 Oct).
         threading.Thread(target=preload_offline_voice, daemon=True, name='voice-preload').start()
         # Your inbox, looked at every three minutes, so "ඊමේල් බලන්න" is answered at once.

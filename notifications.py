@@ -45,6 +45,11 @@ class NotAvailable(Exception):
     """The notification listener could not be used."""
 
 
+# What Phone Link posts when it cannot say which message arrived.
+SUMMARY = re.compile(r'you (may )?have (new|unread) (messages?|notifications?)|new notifications?|'
+                     r'notification summary|\d+ new messages?|missed notifications?', re.I)
+
+
 def looks_like_a_code(text):
     """Would reading this aloud hand someone a credential?"""
     return any(pattern.search(str(text)) for pattern in CODE_PATTERNS)
@@ -152,6 +157,9 @@ def describe(item, store, lang='si'):
     sender = (item.get('title') or '').strip()
     body = (item.get('body') or '').strip()
     if not sender and not body:
+        return None
+    # A summary, not a message: said 7 Nov as "You may have new messagesගෙන් මැසේජ් එකක්".
+    if not body and SUMMARY.search(sender):
         return None
     if sender.lower() in muted_senders(store):
         return None

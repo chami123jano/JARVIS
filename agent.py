@@ -90,6 +90,8 @@ GREETING = re.compile(r'^(hi|hello|hey|good (morning|evening|night)|හෙලෝ
                       r'(ඔයාට කොහොමද|how are you|kohomada)?[\s?!.]*$', re.I)
 ASKED_TO_CREATE = re.compile(r'\b(poem|joke|story|song lyrics)\b|කවියක්|කවි|විහිළුවක්|ජෝක්|'
                              r'කතාවක්|kawiyak|kaviyak|vihiluwak|joke ekak', re.I)
+MESSAGING = re.compile(r'\b(whatsapp|msg|message|text (him|her|them|amma))\b|මැසේජ්|වට්සැප්|'
+                       r'\b(mother|amma|thaththa|father)\b', re.I)
 RUDE = re.compile(r'\b(useless|stupid|idiot|dumb|shut up)\b|මොලයක් නැද්ද|මොළයක් නැද්ද|'
                   r'මෝඩ|පිස්සු|වැඩක් නෑ|molayak nadda|moda', re.I)
 DEEP_SECONDS = 900
@@ -319,6 +321,12 @@ class Agent:
             return '\n(Greet the user warmly by name, චමිදූ, in one short sentence.)'
         if ASKED_TO_CREATE.search(text):
             return '\n(Give it at once, a few good lines; do not ask which kind.)'
+        if MESSAGING.search(text):
+            # Measured 7 Nov: "I cannot send WhatsApp messages directly" -- it can, by
+            # the user's own command, which this model does not see.
+            return ('\n(JARVIS sends WhatsApp messages itself when the user says: send a msg '
+                    'to NAME "text" -- and only to people saved in contacts. Never say it cannot '
+                    'send messages; if the person is unknown, say to add them to contacts.)')
         if RUDE.search(text):
             return ('\n(The user is annoyed. Stay warm and brief: own any mistake in a few '
                     'words and offer to try again. Do not argue or boast.)')

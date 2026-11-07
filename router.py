@@ -534,7 +534,7 @@ FILLER = {
     'reminder': ['කියලා', 'mathak', 'remind', 'me', 'to',
                  'minitthu', 'minute', 'minutes', 'hour', 'hours', 'dahayakin', 'pahakin'],
     'send_message': ['මැසේජ්', 'එකක්', 'යවන්න', 'කියලා', 'message', 'ekak', 'yavanna',
-                     'send', 'a', 'to'],
+                     'send', 'a', 'to', 'msg', 'whatsapp', 'from', 'on', 'via', 'වට්සැප්'],
     'make_skill': ['අලුත්', 'tool', 'එකක්', 'හදන්න', 'skill', 'ඉගෙන', 'ගන්න', 'aluth',
                    'ekak', 'hadanna', 'make', 'a', 'new', 'that', 'learn', 'how', 'write',
                    'teach', 'yourself'],
@@ -655,6 +655,10 @@ OWN_WORDS = {
 }
 
 
+MESSAGE_WORDS = re.compile(r'\b(message|msg|whatsapp|text)\b|මැසේජ්|මැසෙජ්|වට්සැප්', re.I)
+SEND_WORDS = re.compile(r'\b(send|yawanna|yavanna|danna|daanna)\b|යවන්න|දාන්න|යවපන්', re.I)
+
+
 def route(text):
     """Decide what to do with a transcript.
 
@@ -671,6 +675,12 @@ def route(text):
     music = music_intent(text)
     if music:
         name, score, second, second_score = music, 1.0, name, 0.0
+    elif SEND_WORDS.search(text) and MESSAGE_WORDS.search(text) and name != 'call':
+        # "send a msg to amma "kohomada"" went to the model -- once as weather -- which said
+        # it cannot send WhatsApp messages (7 Nov). It can. A message word and a sending
+        # word together decide; either alone does not ("read my messages").
+        other = second if name == 'send_message' else name
+        name, score, second, second_score = 'send_message', max(score, KEYWORD_FLOOR), other, 0.0
     elif 'operate' in (name, second) and has_keyword(text, 'operate') and \
             score - second_score < MARGIN:
         # "calculator එකේ 7 x 8 ඔබන්න" sounds like "calculate"; the pressing word decides.
@@ -770,6 +780,10 @@ def route(text):
             result.update(action='ask', detail='reply')
     elif name in ('save_note', 'send_message', 'open_app'):
         result['content'] = strip_command(text, name, use_phrasing=(name != 'open_app'))
+        quoted = re.search(r'["“”](.+?)["“”]', text) if name == 'send_message' else None
+        if quoted and quoted.group(1).strip():
+            # send a msg to amma "kohomada": the quotes say exactly what to send.
+            result['content'] = quoted.group(1).strip()
         if not result['content']:
             # An order with nothing attached. Ask, rather than saving an empty note,
             # messaging nobody, or opening whatever the sentence happens to resemble.

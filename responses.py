@@ -893,6 +893,23 @@ def say_mail_failed(reason, lang='si'):
             else 'ඊමේල් එක කරන්න බැරි වුණා.')
 
 
+def say_who_to_message(nobody_saved, lang='si'):
+    """Who a message should go to -- or, with no contacts at all, that they are needed."""
+    if nobody_saved:
+        return ('There is nobody in your contacts yet. Add someone first: '
+                'python contacts.py --add amma 0771234567' if lang == 'en' else
+                'contacts වල තාම කවුරුවත් නෑ. මුලින් contact එකක් add කරන්න.')
+    return ('Who should I send it to?' if lang == 'en' else 'කාටද යවන්නේ?')
+
+
+def say_not_a_contact(name, lang='si'):
+    name = str(name).strip()[:30]
+    if lang == 'en':
+        return (f'"{name}" is not in your contacts. Add them with: '
+                f'python contacts.py --add NAME NUMBER')
+    return f'"{name}" කියලා කෙනෙක් contacts වල නෑ. මුලින් add කරන්න.'
+
+
 def say_hands_failed(reason, lang='si'):
     """Day 18: pressing buttons in a program did not get going."""
     if lang == 'en':

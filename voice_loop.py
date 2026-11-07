@@ -1687,6 +1687,24 @@ def build_brain(args):
             return responses.say_no_answer(lang)
         return job['answer']
 
+    # A question JARVIS just asked, so the next words are its answer: who to message.
+    awaiting = {}
+
+    def recipient_answer(text):
+        """"Who should I send it to?" -- "amma". Found: read back, wait for a yes, as any
+        message. Not found: said plainly, with how to add them."""
+        body, lang = awaiting.get('body', ''), awaiting.get('lang', 'si')
+        awaiting.clear()
+        person = contacts.find(store, text)
+        if not person:
+            return responses.say_not_a_contact(text, lang)
+        if not body:
+            return responses.say_need_detail('message', lang)
+        pending.clear()
+        pending.update(kind='whatsapp', person=person, text=body, language=lang)
+        return permissions.describe('send_message',
+                                    {'to': contacts.speakable(person, lang), 'text': body}, lang)
+
     # Day 30: the note just saved, so "ඒක නෙවේ" (not that) right after can undo it.
     last_saved = {'id': None, 'title': '', 'at': 0.0}
     UNDO_SECONDS = 180
@@ -1774,6 +1792,17 @@ def build_brain(args):
                 speech.SPEAKER.say(reply)
             return reply
 
+        # The answer to "who?" -- unless it is a whole new request of its own (7 Nov: a
+        # second "send a msg to amma ..." was taken for the name and refused).
+        if awaiting.get('kind') == 'recipient' and time.monotonic() - awaiting['at'] < 90 \
+                and command_router.route(text)['action'] != 'command':
+            reply = recipient_answer(text)
+            print(f'  JARVIS: {reply[:160]}', flush=True)
+            if speak:
+                speech.SPEAKER.say(reply)
+            return reply
+        awaiting.clear()
+
         if CORRECTION.search(text):
             reply = correction(text, responses.language_of(text))
             print(f'  JARVIS: {reply[:160]}', flush=True)
@@ -1848,9 +1877,12 @@ def build_brain(args):
             # to your mother opens by naming her in the third person.
             body = contacts.strip_name(decision.get('content', ''), person)
             if not person:
-                reply = ('Who should I send it to? They need to be in your contacts.'
-                         if lang == 'en' else
-                         'කාටද යවන්නේ? ඒ කෙනා contacts වල තියෙන්න ඕනේ.')
+                # Your next words answer the question (7 Nov: "amma mother" went to the
+                # model, which said it could not send WhatsApp messages at all).
+                nobody = not contacts.all_contacts(store)
+                if not nobody:                 # with nobody saved, no name can answer it
+                    awaiting.update(kind='recipient', body=body, lang=lang, at=time.monotonic())
+                reply = responses.say_who_to_message(nobody, lang)
             elif not body:
                 reply = responses.say_need_detail('message', lang)
             else:

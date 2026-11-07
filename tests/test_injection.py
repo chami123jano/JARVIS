@@ -153,7 +153,8 @@ class MessageTests(unittest.TestCase):
         calls = {ast.unparse(n.func) for n in ast.walk(announce) if isinstance(n, ast.Call)}
         for forbidden in ('respond', 'agent.start', 'send_pending', 'messaging.send',
                           'command_router.route', 'do_reply_email', 'mail.send', 'do_call',
-                          'correction', 'do_operate', 'operate_outcome'):
+                          'correction', 'do_operate', 'operate_outcome',
+                          'recipient_answer'):
             self.assertNotIn(forbidden, calls)
 
     def test_a_yes_after_a_message_sends_nothing(self):
@@ -164,7 +165,7 @@ class MessageTests(unittest.TestCase):
         tree = ast.parse(source)
         writers = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
                    and ast.unparse(n.func) == 'pending.update']
-        self.assertEqual(len(writers), 5, 'five places put something up for a yes')
+        self.assertEqual(len(writers), 6, 'six places put something up for a yes')
         functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
 
         def inside(node, name):
@@ -181,8 +182,13 @@ class MessageTests(unittest.TestCase):
         self.assertEqual(len(clicks), 1, 'one is an irreversible button in a program')
         operate = [n for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == 'do_operate']
         self.assertEqual(len(operate), 1, 'do_operate named once: in MAIL')
+        # And the answer to "who should I send it to?" (7 Nov), reached only from your
+        # next words after a spoken send_message.
+        answered = [w for w in writers if inside(w, 'recipient_answer')]
+        self.assertEqual(len(answered), 1, 'one is the recipient you name when asked')
         whatsapp = [w for w in writers if not any(inside(w, h) for h in handlers)
-                    and not inside(w, 'correction') and not inside(w, 'operate_outcome')]
+                    and not inside(w, 'correction') and not inside(w, 'operate_outcome')
+                    and not inside(w, 'recipient_answer')]
         self.assertEqual(len(whatsapp), 1, 'two more are the reply and the call')
         enclosing = [n for n in ast.walk(tree) if isinstance(n, ast.If)
                      and any(c is whatsapp[0] for c in ast.walk(n))]

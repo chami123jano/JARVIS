@@ -10,6 +10,7 @@ passes it on. Nothing is written to disk -- the levels change twenty times a sec
 """
 import collections
 import json
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -69,6 +70,14 @@ class ExclusiveServer(ThreadingHTTPServer):
     """One server per port. Python's default asks for address reuse, and on Windows that
     lets a second process bind the same port and take some of the requests."""
     allow_reuse_address = False
+
+    def handle_error(self, request, client_address):
+        """The console waits 0.4 s for the picture and goes; the late answer then has
+        nowhere to go. Measured 9 Nov: 39 such tracebacks in an evening's log, hiding the
+        real errors. Anything else is still reported."""
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            return
+        super().handle_error(request, client_address)
 
 
 TOKEN_FILE = Path(__file__).resolve().parent / 'data' / 'live.token'

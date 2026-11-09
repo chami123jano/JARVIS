@@ -251,19 +251,95 @@ class GoogleEars:
         self.compute = language
         self.load_seconds = 0.0
 
+    # Asked at the same time as Sinhala. Measured 9 Nov: "play a music", "play a song" and
+    # "how are you doing", said in English, came back from si-LK as nothing (or as
+    # "අවවායෙනි"), so every spoken command that evening was lost; en-US had all of them.
+    ALSO = 'en-US'
+
+    def recognise(self, data, language):
+        import speech_recognition as sr
+        recogniser = sr.Recognizer()
+        recogniser.operation_timeout = self.recognizer.operation_timeout
+        try:
+            return recogniser.recognize_google(data, language=language).strip()
+        except self.sr.UnknownValueError:
+            return ''
+
     def transcribe(self, audio, language=None):
         """Return (text, seconds, info) to match the Whisper interface."""
         import numpy
+        from concurrent.futures import ThreadPoolExecutor
         started = time.monotonic()
         samples = (numpy.clip(audio, -1, 1) * 32767).astype('<i2')
         data = self.sr.AudioData(samples.tobytes(), SAMPLE_RATE, 2)
-        try:
-            text = self.recognizer.recognize_google(data, language=self.language)
-        except self.sr.UnknownValueError:
-            text = ''
-        info = type('Info', (), {'language': self.language.split('-')[0],
+        languages = [self.language] + ([self.ALSO] if self.ALSO and self.ALSO != self.language
+                                       else [])
+        with ThreadPoolExecutor(len(languages)) as pool:
+            jobs = [pool.submit(self.recognise, data, code) for code in languages]
+            texts, failure = [], None
+            for job in jobs:
+                try:
+                    texts.append(job.result())
+                except Exception as error:      # one language down is not both
+                    texts.append('')
+                    failure = failure or error
+        if failure and not any(texts):
+            raise failure
+        text, code = (texts[0], languages[0]) if len(texts) == 1 else \
+            choose_transcript(texts[0], texts[1], languages[0], languages[1])
+        info = type('Info', (), {'language': code.split('-')[0],
                                  'language_probability': 1.0})()
-        return text.strip(), time.monotonic() - started, info
+        return text, time.monotonic() - started, info
+
+
+# Ordinary English: what an English transcript of Sinhala speech mostly lacks. Measured
+# 9 Nov, "සින්දුවක් ප්ලේ කරන්න" came back from en-US as "tenduaa play Kara".
+ENGLISH = frozenset('''
+a about after again all also am an and any anything are as ask at back be been before
+being bit but by call can cancel close could day did do does doing done down each email
+else every find first for from game get give go going good got had has have he hello help
+her here hey hi him his how i if in is it its just know last later let like list look make
+many me message mine minute minutes mom more morning most music my name need never new
+news next night no not note notes now of off oh ok okay old on once one only open or other
+our out over pause phone play please previous put read remind reminder repeat resume right
+say screen see send set she should show shut sing skip so some something song songs sorry
+start still stop take talk talking tell than thank thanks that the their them then there
+these they thing things think this time to today tomorrow too turn two up us volume want
+was watch we weather well were what whats when where which who why will with work would
+yeah yes yesterday you your youtube tab tabs battery dollar rate price note jarvis hour
+hours second seconds three four five six seven eight nine ten am pm o'clock is what's i'm
+don't can't it's'''.split())
+
+
+def english_share(text):
+    words = re.findall(r"[a-z']+", str(text).lower())
+    return sum(w in ENGLISH for w in words) / len(words) if words else 0.0
+
+
+def choose_transcript(sinhala, english, si_code='si-LK', en_code='en-US'):
+    """(text, language code) from what Sinhala and English recognition each heard."""
+    sinhala, english = str(sinhala or '').strip(), str(english or '').strip()
+    if not english:
+        return sinhala, si_code
+    if not sinhala:
+        return english, en_code
+    # Both heard something. Sinhala grammar decides for Sinhala: "අද ඩොලර් රේට් එක කීයද"
+    # was "at the dollar rate take" in English, mostly real words.
+    if set(sinhala.split()) & SINHALA_MARKERS:
+        return sinhala, si_code
+    share, said = english_share(english), len(sinhala.split())
+    # English said in English comes back from si-LK as one stray word ("අවවායෙනි"), or
+    # spelled out in Sinhala letters with no Sinhala grammar in it.
+    if (said <= 1 and share >= .6) or (share == 1.0 and len(english.split()) >= 2):
+        return english, en_code
+    return sinhala, si_code
+
+
+# Words only a Sinhala sentence has: the verbs and particles every command ends with.
+SINHALA_MARKERS = frozenset('''
+කරන්න කරන්නකෝ කීයද කොහොමද මොනවද මොකක්ද එක එකක් එකේ දාන්න දාන්නකෝ යවන්න කියන්න බලන්න
+පෙන්වන්න ගන්න අද හෙට ඊයේ මට මගේ ඔයා ඔයාට ඔයාගේ වැඩි අඩු නවත්වන්න වහන්න අරින්න තියෙනවද
+තියෙන්නේ පුළුවන් මතක් සින්දුවක් සින්දුව ගුණ කීයක්ද මොකද ඕනේ ඕන නෑ ඔව් හරි'''.split())
 
 
 class Ears:

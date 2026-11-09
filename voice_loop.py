@@ -1092,7 +1092,8 @@ def build_brain(args):
         for name in ('numpy', 'onnxruntime', 'piper', 'cryptography.x509',
                      'cryptography.hazmat.primitives.asymmetric.ec', 'ssl', 'av',
                      'winrt.windows.ui.notifications',
-                     'winrt.windows.ui.notifications.management', 'win32com.client'):
+                     'winrt.windows.ui.notifications.management', 'win32com.client',
+                     'winrt.windows.media.control'):
             try:
                 __import__(name)
             except Exception as error:          # an optional part missing is not fatal
@@ -1523,6 +1524,8 @@ def build_brain(args):
                     break
                 time.sleep(.25)
             try:
+                if not item.get('path'):
+                    media.make_room(store)
                 media.start(item)
                 media.remember_played(store, item)
             except Exception as error:
@@ -1534,9 +1537,28 @@ def build_brain(args):
     def do_media_key(action):
         def press(decision, lang):
             import media
+            if action == 'resume' and media.resume_last():
+                return responses.say_media_done(action, lang)
             media.control(action)
             return responses.say_media_done(action, lang)
         return press
+
+    def do_stop_music(decision, lang):
+        """Every song stopped, not one toggled: measured 8 Nov, "stop all songs" played a
+        Tamil nonstop and "stop all song curently palying" played "Nothing's Gonna Stop Us
+        Now"."""
+        import media
+        done = media.stop_everything(store)
+        print(f"  stopped: {done['paused']} paused, {len(done['closed'])} closed, "
+              f"{len(done['muted'])} muted, quiet={done['quiet']}", flush=True)
+        return responses.say_music_stopped(done, lang)
+
+    def do_close_tabs(decision, lang):
+        import media
+        everything = bool(re.search(r'youtube|යූටියුබ්|යුටියුබ්', decision['text'], re.I))
+        closed = media.close_tabs(store, everything_youtube=everything)
+        print(f'  closed {len(closed)} tabs', flush=True)
+        return responses.say_tabs_closed(len(closed), everything, lang)
 
     def do_look(decision, lang):
         """Day 15: the window in front, the screen, or the latest photo, read by the local
@@ -1570,7 +1592,8 @@ def build_brain(args):
         'read_messages': do_read_messages,
         'look_screen': do_look,
         'play_music': do_play,
-        'pause_music': do_media_key('pause'),
+        'pause_music': do_stop_music,
+        'close_tabs': do_close_tabs,
         'resume_music': do_media_key('resume'),
         'next_song': do_media_key('next'),
         'previous_song': do_media_key('previous'),

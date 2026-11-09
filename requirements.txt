@@ -40,6 +40,7 @@ winrt-Windows.UI.Notifications>=3,<4
 winrt-Windows.Foundation>=3,<4
 winrt-Windows.Foundation.Collections>=3,<4
 winrt-Windows.ApplicationModel>=3,<4
+winrt-Windows.Media.Control>=3,<4     # pausing every player, not toggling one (8 Nov)
 
 # Machine control (Day 10): exact volume, and screenshots.
 pycaw>=20240000

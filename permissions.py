@@ -30,6 +30,7 @@ TIERS = {
     'save_note': LOCAL, 'set_reminder': LOCAL, 'remember': LOCAL,
     'write_document': LOCAL, 'open_app': LOCAL, 'web_search': LOCAL,
     'play_music': LOCAL, 'volume_up': LOCAL, 'volume_down': LOCAL,
+    'pause_music': LOCAL, 'close_tabs': LOCAL,      # a closed tab comes back: Ctrl+Shift+T
     'screenshot': LOCAL, 'propose_skill': LOCAL,
     # Tier 2: leaves the machine, in the user's name.
     'send_message': OUTWARD, 'send_sms': OUTWARD, 'call': OUTWARD,

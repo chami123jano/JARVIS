@@ -1003,6 +1003,31 @@ def say_media_done(action, lang='si'):
             'previous': 'කලින් එක.'}.get(action, 'හරි.')
 
 
+def say_music_stopped(done, lang='si'):
+    """What stopping did, as it happened: nothing claimed that the sound check denies."""
+    acted = done.get('paused') or done.get('closed')
+    if not done.get('quiet'):
+        return ('I stopped what I could, but something is still playing.' if lang == 'en'
+                else 'පුළුවන් ඒවා නැවැත්තුවා, ඒත් තව මොකක් හරි play වෙනවා.')
+    if not acted:
+        return 'Nothing is playing.' if lang == 'en' else 'දැන් මුකුත් play වෙන්නේ නෑ.'
+    return 'Stopped.' if lang == 'en' else 'නැවැත්තුවා.'
+
+
+def say_tabs_closed(count, everything_youtube, lang='si'):
+    if lang == 'en':
+        if not count:
+            return ('There are no YouTube tabs open.' if everything_youtube
+                    else 'None of the tabs I opened are still open.')
+        what = 'YouTube tab' if everything_youtube else 'song tab'
+        return f'Closed {count} {what}{"s" if count != 1 else ""}.'
+    if not count:
+        return ('YouTube tabs මුකුත් open වෙලා නෑ.' if everything_youtube
+                else 'මම open කරපු tabs මුකුත් දැන් නෑ.')
+    return (f'YouTube tabs {count}ක් වැහුවා.' if everything_youtube
+            else f'සින්දු tabs {count}ක් වැහුවා.')
+
+
 def say_no_music(reason, lang='si'):
     if lang == 'en':
         return f'I could not play that. {reason}.'

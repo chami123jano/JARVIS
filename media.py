@@ -210,6 +210,200 @@ def start(item):
         raise MediaError('the browser did not open')
 
 
+# ---------------------------------------------------------------- stopping it
+
+# Windows' own player controls report, per player, whether it is playing; a media key only
+# flips whichever player Windows thinks is current. Measured 8 Nov: with two songs in two
+# tabs, "stop the song" paused one, and the key would have started a paused one again.
+PLAYING, PAUSED = 4, 5
+BROWSERS = ('chrome.exe', 'msedge.exe', 'brave.exe', 'opera.exe', 'vivaldi.exe', 'firefox.exe')
+
+
+async def _sessions():
+    from winrt.windows.media.control import \
+        GlobalSystemMediaTransportControlsSessionManager as Manager
+    manager = await Manager.request_async()
+    return manager, list(manager.get_sessions())
+
+
+def pause_everything():
+    """Pause every player that is playing -- a pause, never a toggle. Returns how many."""
+    import asyncio
+
+    async def run():
+        _, sessions = await _sessions()
+        paused = 0
+        for session in sessions:
+            try:
+                if session.get_playback_info().playback_status == PLAYING:
+                    if await session.try_pause_async():
+                        paused += 1
+            except Exception:
+                continue
+        return paused
+    try:
+        return asyncio.run(run())
+    except Exception as error:
+        print(f'  media: players could not be paused: {error}', file=sys.stderr)
+        return 0
+
+
+def resume_last():
+    """Carry on with the player Windows thinks is current, if it is paused."""
+    import asyncio
+
+    async def run():
+        manager, _ = await _sessions()
+        session = manager.get_current_session()
+        if session and session.get_playback_info().playback_status == PAUSED:
+            return bool(await session.try_play_async())
+        return False
+    try:
+        return asyncio.run(run())
+    except Exception:
+        return False
+
+
+class Tab:
+    """One browser tab, as the browser's own tab strip shows it."""
+
+    def __init__(self, control, name):
+        self.control, self.name = control, name
+
+    def button(self, name):
+        try:
+            for child in self.control.GetChildren():
+                if child.ControlTypeName == 'ButtonControl' and child.Name == name:
+                    return child
+        except Exception:
+            pass
+        return None
+
+    def press(self, name):
+        button = self.button(name)
+        if button is None:
+            return False
+        try:
+            button.GetInvokePattern().Invoke()
+        except Exception:
+            try:
+                button.Click(simulateMove=False)
+            except Exception:
+                return False
+        return True
+
+    def close(self):
+        return self.press('Close')
+
+
+def browser_windows():
+    """Top-level windows that belong to a web browser (not VS Code, not WhatsApp)."""
+    import psutil
+    import uiautomation as auto
+    import win32process
+    windows = []
+    for window in auto.GetRootControl().GetChildren():
+        if window.ClassName not in ('Chrome_WidgetWin_1', 'MozillaWindowClass'):
+            continue
+        try:
+            _, pid = win32process.GetWindowThreadProcessId(window.NativeWindowHandle)
+            if psutil.Process(pid).name().lower() in BROWSERS:
+                windows.append(window)
+        except Exception:
+            continue
+    return windows
+
+
+def browser_tabs():
+    """Every tab open in a browser, newest window first."""
+    tabs = []
+
+    def walk(control, depth=0):
+        if depth > 14:
+            return
+        for child in control.GetChildren():
+            if child.ControlTypeName == 'TabItemControl':
+                tabs.append(Tab(child, child.Name or ''))
+            else:
+                walk(child, depth + 1)
+    for window in browser_windows():
+        try:
+            walk(window)
+        except Exception:
+            continue
+    return tabs
+
+
+def plain(text):
+    """For comparing a song's title with a tab's: lower case, without "(63) " counts."""
+    return ' '.join(re.sub(r'^\(\d+\)\s*', '', str(text)).lower().split())
+
+
+def jarvis_played(tab, store, recent=20):
+    """Is this the tab of a song JARVIS put on? Its title is in what JARVIS played."""
+    name = plain(tab.name)
+    if 'youtube' not in name:
+        return False
+    for item in history(store)[-recent:]:
+        title = plain(item.get('title', ''))[:40]
+        if item.get('source') != 'local' and len(title) >= 6 and title in name:
+            return True
+    return False
+
+
+def is_youtube(tab):
+    return plain(tab.name).endswith('youtube') or ' - youtube' in plain(tab.name)
+
+
+def close_tabs(store, everything_youtube=False):
+    """Close JARVIS's song tabs, or every YouTube tab when asked for that in words.
+    Returns the names closed. Nothing else is touched: not your other tabs, not this
+    console."""
+    import uiautomation as auto
+    closed = []
+    with auto.UIAutomationInitializerInThread():
+        for tab in browser_tabs():
+            wanted = is_youtube(tab) if everything_youtube else jarvis_played(tab, store)
+            if wanted and tab.close():
+                closed.append(plain(tab.name))
+    return closed
+
+
+def browser_sounding():
+    try:
+        return any(name.lower() in BROWSERS for name, _ in playing())
+    except Exception:
+        return False
+
+
+def stop_everything(store, settle=.8):
+    """Silence: every player paused; if a browser still makes sound -- a second song in
+    another tab, which Windows does not offer to pause -- JARVIS's own song tabs are
+    closed. Your tabs are never touched. {'paused', 'closed', 'muted', 'quiet'}.
+
+    Which tab makes the sound cannot be told: measured 9 Nov, Chrome gives every tab a
+    "Mute tab" button, silent ones included."""
+    paused = pause_everything()
+    time.sleep(settle)
+    closed = []
+    if browser_sounding():
+        closed = close_tabs(store)
+        time.sleep(settle / 2)
+    return {'paused': paused, 'closed': closed, 'muted': [], 'quiet': not browser_sounding()}
+
+
+def make_room(store):
+    """Before a new song: what is playing is paused and JARVIS's earlier song tabs are
+    closed. Measured 8 Nov: "play another song" left the first one playing in its own tab,
+    and two songs played at once."""
+    try:
+        pause_everything()
+        return close_tabs(store)
+    except Exception as error:
+        print(f'  media: could not make room: {error}', file=sys.stderr)
+        return []
+
+
 def control(action):
     """pause / play / next / previous, by the media keys."""
     import pc_control
